@@ -1,4 +1,5 @@
 import streamlit as st
+import FinanceDataReader as fdr
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
@@ -6,7 +7,6 @@ import platform
 if platform.system() == 'Darwin':
     plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
-import FinanceDataReader as fdr
 df = fdr.DataReader('KS11', '2024-01-01')
 df['MA20'] =df ['Close'].rolling(20).mean()
 df['MA60'] =df['Close'].rolling(60).mean()
