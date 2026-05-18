@@ -7,7 +7,7 @@ import platform
 if platform.system() == 'Darwin':
     plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
-df = fdr.DataReader('KS11', '2024-01-01')
+df = fdr.DataReader('KS11', '2020-01-01')
 df['MA20'] =df ['Close'].rolling(20).mean()
 df['MA60'] =df['Close'].rolling(60).mean()
 df['MA20_gap'] =(df['Close'] - df['MA20']) / df['MA20'] * 100
@@ -108,4 +108,47 @@ for lag in range(1, 6):
         result_text = "유의미하지 않음"
 
     st.write(f"{lag}일 후: p-value = {p_value:.4f} -> {result_text}")
-                 
+
+# llm시장 분석 코멘트 생성
+# ollama의 qwen2.5:14b 모델 사용
+
+# ollama 라이브러리 가져오기
+# ollama 로컬 llm을 파이썬에게 쓸수있게 해주는 라이브러리
+import ollama
+
+# llm에게 보낼 프롬포트 작성
+# f-string으로 오늘 점수랑 상태 넣기
+prompt = f"""
+당신은 한국 주식시장에서 제일 잘나가는 주식 시장 전문가 입니다
+모든것을 논리적으로 분석하며 항상 진실만을 말한는 전문가 입니다
+오늘 한국 공포탐욕지수는 {today_score:.1f}점입니다.
+
+7개 지표 현황:
+-이동평균 괴리율: {df['MA20_gap_norm'].iloc[-1]:.1f}
+-거래량: {df['Volume_norm'].iloc[-1]:.1f}
+-변동성: {df['Volatility_norm'].iloc[-1]:.1f}
+-모멘텀: {df['Momentum_norm'].iloc[-1]:.1f}
+-52주 고저비율: {df['HL_norm'].iloc[-1]:.1f}
+-매수강도: {df['Foreign_norm'].iloc[-1]:.1f}
+-RSI: {df['RSI_norm'].iloc[-1]:.1f}
+
+위 데이터 바탕으로 현재시장의 상황을 3줄로 분석요약해주세요
+"""
+
+#웹화면에 구분선
+st.markdown("---")
+st.subheader("AI 시장분석")
+
+#llm 응답 생성
+# ollama.chat() : llm에게 메세지 보내고 응답받기
+# # model: 사용할 모델 이름
+# messages: 대화 내용 (role: user = 사용자 질문)
+with st.spinner("AI가 분석중..."):
+     #st.spinner: 로딩 중 표시
+     response = ollama.chat(
+         model="qwen2.5:14b",
+         messages=[{"role": "user", "content": prompt}]
+     )
+# 응답 텍스트 추출해서 웹화면에 표시
+# response['message']['content']: LLM이 생성한 텍스트
+st.write(response['message']['content'])
