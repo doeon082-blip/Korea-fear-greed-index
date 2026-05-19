@@ -2,3 +2,5 @@ streamlit
 finance-datareader
 pandas
 matplotlib
+ollama
+statsmodels
