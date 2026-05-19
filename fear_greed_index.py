@@ -143,12 +143,22 @@ st.subheader("AI 시장분석")
 # ollama.chat() : llm에게 메세지 보내고 응답받기
 # # model: 사용할 모델 이름
 # messages: 대화 내용 (role: user = 사용자 질문)
-with st.spinner("AI가 분석중..."):
+# try-except: 오류나도 앱 멈추지 않게 하는 것
+# try: 일단 실행해봐
+# except: 오류나면 이걸 실행해
+try:
+    with st.spinner("AI가 분석중..."):
      #st.spinner: 로딩 중 표시
      response = ollama.chat(
          model="qwen2.5:14b",
          messages=[{"role": "user", "content": prompt}]
      )
+    st.write(response['message']['content'])
+except:
+    # ollama가 없는 환경(Streamlit Cloud)에서는
+    # 오류 대신 이 메시지 표시
+    st.info("AI 시장분석은 로컬 환경에서만 작동합니다.")
+    
 # 응답 텍스트 추출해서 웹화면에 표시
 # response['message']['content']: LLM이 생성한 텍스트
 st.write(response['message']['content'])
