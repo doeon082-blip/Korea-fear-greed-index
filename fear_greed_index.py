@@ -68,6 +68,68 @@ elif today_score >= 25:
     st.write("상태: 공포")
 else:
     st.write("상태: 극도의 공포")
+
+# 상관관계 분석
+# 7개 지표가 서로 얼마나 관련있는지 확인
+
+# 7개 지표 컬럼만 모아서 새 데이터프레임 만들기
+indicator_cols  =[
+    'MA20_gap_norm', # 이동 평균 괴리율
+    'Volume_norm', # 거래량
+    'Volatility_norm', #변동성
+    'Momentum_norm', # 모멘텀
+    'HL_norm', #52주 고저비율
+    'Foreign_norm', #매수 강도
+    'RSI_norm' # RSI
+]
+
+# 상관관계 계산
+# .corr(): 각 지표 간 상관관계 계산
+# -1 ~ 1 사이 숫자로 나옴
+# 1: 완전히 같이 움직임
+# 0: 관계없음
+# -1: 반대로 움직임
+corr_matrix = df[indicator_cols].corr()
+
+# 웹화면에 표시
+st.markdown("---")
+st.subheader("지표간 상관관계분석")
+st.write("1에 가까울수록 같이 움직임, -1에 가까울수록 반대로 움직임")
+
+# 히트맵 시각화
+fig_corr, ax = plt.subplots(figsize=(10, 8))
+
+# imshow: 색깔로 숫자를 표현하는 차트
+im =ax.imshow(corr_matrix, cmap='RdYlGn', vmin=-1, vmax=1)
+# cmap='RdYlGn': 빨강(음수) → 노랑(0) → 초록(양수)
+# vmin=-1, vmax=1: 색깔 범위 고정
+
+# 축 레이블 설정
+ax.set_xticks(range(len(indicator_cols)))
+ax.set_yticks(range(len(indicator_cols)))
+ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '매수강도', 'RSI'], rotation=45)
+ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '매수강도', 'RSI'])
+
+# 각 칸에 숫자표시
+for i in range(len(indicator_cols)):
+    for j in range(len(indicator_cols)):
+        ax.text(j, i, f'{corr_matrix.iloc[i, j]:.2f}',
+                ha='center', va='center', fontsize=9)
+
+# 색깔막대 추가
+plt.colorbar(im, ax=ax)
+ax.set_title('지표 간 상관관계 히트맵')
+plt.tight_layout()
+
+st.pyplot(fig_corr)
+
+# 높은 상관관계 지표찾기 (0.7 이상이면 비슷한지표)
+st.write("**상관관계 0.7이상인 지표 쌍 (중복가능성);**")
+for i in range(len(indicator_cols)):
+    for j in range(i+1, len(indicator_cols)):
+        if abs(corr_matrix.iloc[i, j]) >=0.7:
+            st.write(f"➡️ {indicator_cols[i]} & {indicator_cols[j]}; {corr_matrix.iloc[i, j]:.2f}")
+
 # Granger:인과검정
 #"공포 탐욕지수가 KOSPI를 예측할수있나?" 검증
 
@@ -158,7 +220,7 @@ except:
     # ollama가 없는 환경(Streamlit Cloud)에서는
     # 오류 대신 이 메시지 표시
     st.info("AI 시장분석은 로컬 환경에서만 작동합니다.")
-    
+
 # 응답 텍스트 추출해서 웹화면에 표시
 # response['message']['content']: LLM이 생성한 텍스트
 st.write(response['message']['content'])
