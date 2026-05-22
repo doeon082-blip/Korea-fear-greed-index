@@ -8,13 +8,24 @@ if platform.system() == 'Darwin':
     plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
 df = fdr.DataReader('KS11', '2020-01-01')
+# 원달러 환율 데이터 불러오기
+# USD/KRW: 달러 대비 원화 환율
+df_usd = fdr.DataReader('USD/KRW', '2020-01-01')
+# 환율 정규화
+# 환율 오르면 외국인 투자 감소 → 공포 신호
+# 그래서 역방향으로 정규화
+df_bond = fdr.DataReader('^TNX', '2020-01-01')
 df['MA20'] =df ['Close'].rolling(20).mean()
 df['MA60'] =df['Close'].rolling(60).mean()
+df['MA120'] =df['Close'].rolling(120).mean()
+df['MA240'] =df['Close'].rolling(240).mean()
 df['MA20_gap'] =(df['Close'] - df['MA20']) / df['MA20'] * 100
 fig,  (ax1, ax2) = plt.subplots(2, 1, figsize=(12,8))
 ax1.plot(df.index, df['Close'], label='KOSPI')
 ax1.plot(df.index, df['MA20'], label ='20일 이동평균')
 ax1.plot(df.index, df['MA60'], label ='60일 이동평균')
+ax1.plot(df.index, df['MA120'], label ='120일 이동평균')
+ax1.plot(df.index, df['MA240'], label ='240일 이동평균')
 ax1.set_title('KOSPI 지수')
 ax1.legend()
 ax2.bar(df.index, df['Volume'], label='거래량')
@@ -36,9 +47,6 @@ df['High_52w'] = df ['Close'].rolling(252).max()
 df['Low_52w'] = df['Close'].rolling(252).min()
 df['HL_ratio'] = (df['Close'] - df['Low_52w']) / (df['High_52w'] - df ['Low_52w']) * 100
 df['HL_norm'] = normalize(df['HL_ratio'])
-df['Buy_pressure'] = df['Return'] * df['Volume']
-df['Buy_pressure_ma'] = df['Buy_pressure'].rolling(20).mean()
-df['Foreign_norm'] = normalize(df['Buy_pressure_ma'])
 delta = df['Close'] .diff()
 gain =delta.clip(lower=0)
 loss = (-delta). clip(lower=0)
@@ -47,15 +55,20 @@ avg_loss = loss.rolling(14).mean()
 rs = avg_gain / avg_loss
 df['RSI'] = 100 - (100 / (1 + rs))
 df['RSI_norm'] = normalize(df['RSI'])
-df['Fear_Greed'] =(
-    df['MA20_gap_norm'] + 
-    df['Volume_norm'] +
-    df['Volatility_norm'] + 
-    df['Momentum_norm'] + 
-    df['HL_norm'] + 
-    df['Foreign_norm'] +
-    df['RSI_norm'] 
-)/7
+df['USD_KRW'] = df_usd['Close'].reindex(df.index)
+df['USD_norm'] = 100 - normalize(df['USD_KRW'])
+df['BOND'] = df_bond['Close'].reindex(df.index)
+df['BOND_norm'] =100 - normalize(df['BOND'])
+# 8개 지표 평균으로 공포탐욕지수 계산
+# mean(axis=1): 행 방향으로 평균
+# NaN 있어도 나머지로 계산함
+
+indicator_cols_cals = [
+    'MA20_gap_norm', 'Volume_norm', 'Volatility_norm',
+    'Momentum_norm', 'HL_norm', 'RSI_norm',
+    'USD_norm', 'BOND_norm'
+]
+df['Fear_Greed'] = df[indicator_cols_cals].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
 st.write(f"\n오늘 공포탐욕지수: {today_score:.1f}")
 if today_score >= 75:
@@ -70,17 +83,19 @@ else:
     st.write("상태: 극도의 공포")
 
 # 상관관계 분석
-# 7개 지표가 서로 얼마나 관련있는지 확인
+# 6개 지표가 서로 얼마나 관련있는지 확인
 
-# 7개 지표 컬럼만 모아서 새 데이터프레임 만들기
+
+# 8개 지표 컬럼만 모아서 새 데이터프레임 만들기
 indicator_cols  =[
     'MA20_gap_norm', # 이동 평균 괴리율
     'Volume_norm', # 거래량
     'Volatility_norm', #변동성
     'Momentum_norm', # 모멘텀
     'HL_norm', #52주 고저비율
-    'Foreign_norm', #매수 강도
-    'RSI_norm' # RSI
+    'RSI_norm', # RSI
+    'USD_norm', # 원달러 환율
+    'BOND_norm' #미국 10년채 국채 금리
 ]
 
 # 상관관계 계산
@@ -107,8 +122,8 @@ im =ax.imshow(corr_matrix, cmap='RdYlGn', vmin=-1, vmax=1)
 # 축 레이블 설정
 ax.set_xticks(range(len(indicator_cols)))
 ax.set_yticks(range(len(indicator_cols)))
-ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '매수강도', 'RSI'], rotation=45)
-ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '매수강도', 'RSI'])
+ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI'], rotation=45)
+ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI'])
 
 # 각 칸에 숫자표시
 for i in range(len(indicator_cols)):
@@ -174,10 +189,6 @@ for lag in range(1, 21):
 # llm시장 분석 코멘트 생성
 # ollama의 qwen2.5:14b 모델 사용
 
-# ollama 라이브러리 가져오기
-# ollama 로컬 llm을 파이썬에게 쓸수있게 해주는 라이브러리
-import ollama
-
 # llm에게 보낼 프롬포트 작성
 # f-string으로 오늘 점수랑 상태 넣기
 prompt = f"""
@@ -191,7 +202,8 @@ prompt = f"""
 -변동성: {df['Volatility_norm'].iloc[-1]:.1f}
 -모멘텀: {df['Momentum_norm'].iloc[-1]:.1f}
 -52주 고저비율: {df['HL_norm'].iloc[-1]:.1f}
--매수강도: {df['Foreign_norm'].iloc[-1]:.1f}
+-원달러 환률: {df['USD_norm'].iloc[-1]:.1f}
+-미국 국채금리 {df['BOND_norm'].iloc[-1]:.1f}
 -RSI: {df['RSI_norm'].iloc[-1]:.1f}
 
 위 데이터 바탕으로 현재시장의 상황을 3줄로 분석요약해주세요
@@ -209,18 +221,20 @@ st.subheader("AI 시장분석")
 # try: 일단 실행해봐
 # except: 오류나면 이걸 실행해
 try:
+    # ollama 라이브러리 가져오기
+    # ollama 로컬 llm을 파이썬에게 쓸수있게 해주는 라이브러리
+    import ollama
     with st.spinner("AI가 분석중..."):
      #st.spinner: 로딩 중 표시
-     response = ollama.chat(
+        response = ollama.chat(
          model="qwen2.5:14b",
          messages=[{"role": "user", "content": prompt}]
      )
+# 응답 텍스트 추출해서 웹화면에 표시
+# response['message']['content']: LLM이 생성한 텍스트
     st.write(response['message']['content'])
 except:
     # ollama가 없는 환경(Streamlit Cloud)에서는
     # 오류 대신 이 메시지 표시
     st.info("AI 시장분석은 로컬 환경에서만 작동합니다.")
 
-# 응답 텍스트 추출해서 웹화면에 표시
-# response['message']['content']: LLM이 생성한 텍스트
-st.write(response['message']['content'])
