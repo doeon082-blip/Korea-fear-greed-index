@@ -63,12 +63,12 @@ df['BOND_norm'] =100 - normalize(df['BOND'])
 # mean(axis=1): 행 방향으로 평균
 # NaN 있어도 나머지로 계산함
 
-indicator_cols_cals = [
+indicator_cols_calc = [
     'MA20_gap_norm', 'Volume_norm', 'Volatility_norm',
     'Momentum_norm', 'HL_norm', 'RSI_norm',
     'USD_norm', 'BOND_norm'
 ]
-df['Fear_Greed'] = df[indicator_cols_cals].mean(axis=1)
+df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
 st.write(f"\n오늘 공포탐욕지수: {today_score:.1f}")
 if today_score >= 75:
@@ -225,16 +225,16 @@ try:
     # ollama 로컬 llm을 파이썬에게 쓸수있게 해주는 라이브러리
     import ollama
     with st.spinner("AI가 분석중..."):
-     #st.spinner: 로딩 중 표시
+        #st.spinner: 로딩 중 표시
         response = ollama.chat(
-         model="qwen2.5:14b",
-         messages=[{"role": "user", "content": prompt}]
-     )
-# 응답 텍스트 추출해서 웹화면에 표시
-# response['message']['content']: LLM이 생성한 텍스트
-    st.write(response['message']['content'])
-except:
+            model="qwen2.5:14b",
+            messages=[{"role": "user", "content": prompt}]
+        )
+        # 응답 텍스트 추출해서 웹화면에 표시
+        # response['message']['content']: LLM이 생성한 텍스트
+        st.write(response['message']['content'])
+except Exception as e:
     # ollama가 없는 환경(Streamlit Cloud)에서는
     # 오류 대신 이 메시지 표시
-    st.info("AI 시장분석은 로컬 환경에서만 작동합니다.")
+    st.error(f"오류내용: {e}")
 
