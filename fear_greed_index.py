@@ -233,8 +233,6 @@ try:
         # 응답 텍스트 추출해서 웹화면에 표시
         # response['message']['content']: LLM이 생성한 텍스트
         st.write(response['message']['content'])
-except Exception as e:
-    # ollama가 없는 환경(Streamlit Cloud)에서는
-    # 오류 대신 이 메시지 표시
-    st.error(f"오류내용: {e}")
+except:
+    st.info("AI 시장분석은 로컬 환경에서만 작동됩니다.")
 
