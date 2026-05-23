@@ -32,7 +32,7 @@ ax2.bar(df.index, df['Volume'], label='거래량')
 ax2.set_title('거래량')
 ax2.legend()
 plt.tight_layout()
-st.pyplot(fig)
+
 def normalize(series):
     return (series -series.min()) / (series.max() - series.min()) * 100
 df['MA20_gap_norm'] = normalize(df ['MA20_gap'])
@@ -81,6 +81,7 @@ elif today_score >= 25:
     st.write("상태: 공포")
 else:
     st.write("상태: 극도의 공포")
+st.pyplot(fig)
 
 # 상관관계 분석
 # 6개 지표가 서로 얼마나 관련있는지 확인
