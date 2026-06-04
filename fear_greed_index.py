@@ -146,22 +146,233 @@ for i in range(len(indicator_cols)):
         if abs(corr_matrix.iloc[i, j]) >=0.7:
             st.write(f"➡️ {indicator_cols[i]} & {indicator_cols[j]}; {corr_matrix.iloc[i, j]:.2f}")
 
-# Granger:인과검정
-#"공포 탐욕지수가 KOSPI를 예측할수있나?" 검증
+# ADF 검정 (Augmented Dickey-Fuller Test)
+# Granger 검정 전에 반드시 해야 하는 것
+# 데이터가 안정적인지 (정상 시계열인지) 확인
+
+# statsmodels에서 ADF 검정 함수 가져오기
+from statsmodels.tsa.stattools import adfuller
+
+
+# [웹화면 구성]
+# st.markdown("---"): 웹화면에 가로 구분선 그리기
+# "---" 는 마크다운에서 구분선을 의미
+st.markdown("---")
+
+# st.subheader(): 중간 크기 제목 표시
+# st.title() > st.header() > st.subheader() 순서로 작아짐
+st.subheader(" ADF 검정결과 (시계열 안정성 확인)")
+
+st.write("Granger 검정 전 데이터가 안정적인지 확인합니다")
+st.write("p-value < 0.05 안정적 Granger 검정 가능")
+st.write("p-value > = 0.05 불안정 차분 처리 필요")
+
+# [변수 1] adf_targets - 검정할 지표 목록
+# =============================================
+# 딕셔너리(Dictionary): 키:값 형태로 데이터 저장
+# 형태: {'키': '값', '키': '값'}
+# 왼쪽(키) = 웹화면에 표시할 이름
+# 오른쪽(값) = df에 있는 실제 컬럼 이름
+#
+# 왜 딕셔너리를 쓰냐?
+# → 이름이랑 컬럼명 한 번에 관리하려고
+# → for 루프에서 둘 다 동시에 꺼내 쓸 수 있어
+
+adf_targets = {
+    '공포탐욕지수': 'Fear_Greed', #우리가 만든 지수 
+    'KOSPI 수익률': 'Return', # 월간 수익률
+    '원달러 환율': 'USD_KRW', # 원달러 환율 원본
+    '미국 국채 금리': 'BOND', # 국채금리 원본
+}
+
+# [변수 2] adf_results - 결과 저장 리스트
+# =============================================
+# 리스트(List): 여러 값을 순서대로 담는 것
+# [] = 빈 리스트 (아무것도 없는 목록)
+# 나중에 for 루프에서 결과를 하나씩 추가할 거야
+# 최종적으로 표(DataFrame)로 만들기 위해
+adf_results = []
+
+# [for 루프] 4개 지표 각각 ADF 검정
+# =============================================
+# for name, col in adf_targets.items():
+# → adf_targets 딕셔너리에서
+# → 키(name)와 값(col)을 동시에 꺼내기
+# → .items(): 딕셔너리의 키-값 쌍을 꺼내는 메서드
+#
+# 1번째 반복: name='공포탐욕지수', col='Fear_Greed'
+# 2번째 반복: name='KOSPI 수익률', col='Return'
+# 3번째 반복: name='원달러 환율', col='USD_KRW'
+# 4번째 반복: name='미국 국채금리', col='BOND
+for name, col in adf_targets.items():
+
+        # [메서드] df[col].dropna()
+    # df[col]: df에서 col 이름의 컬럼 선택
+    #   예: col='Fear_Greed' 이면 df['Fear_Greed'] 선택
+    # .dropna(): NaN(결측값) 제거 메서드
+    #   NaN = Not a Number = 값이 없는 것
+    #   ADF 검정은 NaN 있으면 오류나서 반드시 제거해야 함
+    # series: 선택된 컬럼 데이터
+    #   (변수 이름은 내가 붙인 것, 뭐든 상관없음)
+    series = df[col].dropna()
+
+    # [함수] adfuller()
+    # ADF 검정 실행하는 함수
+    # 입력: series (검정할 데이터)
+    # 출력: result (여러 숫자가 담긴 튜플)
+    #
+    # result[0]: 검정 통계량 (숫자가 클수록 불안정)
+    # result[1]: p-value (제일 중요!)
+    # result[2]: 최적 lag 수
+    # result[3]: 관측치 수
+    # result[4]: 임계값 딕셔너리 (1%, 5%, 10% 기준)
+    result = adfuller(series)
+
+    # result[1]: p-value 추출
+    # [1] = 인덱스 (0부터 시작, 두 번째 값)
+    # 숫자 1 (일) 맞음, 소문자 l (엘) 아님
+    p_value = result[1]
+
+       # [조건문] p-value 기준으로 안정성 판단
+    # if: 만약 ~이라면
+    # p_value < 0.05: p-value가 0.05보다 작으면
+    if p_value < 0.05:
+        status = '안정적'
+    else:
+        status = '불안정(차분필요)'
+
+    # [메서드] adf_results.append()
+    # .append(): 리스트 맨 뒤에 항목 추가하는 메서드
+    # 딕셔너리 형태로 추가
+    # {'지표': 이름, 'p-value': 숫자, '판단': 결과}
+    adf_results.append({
+        '지표' : name,
+        'p_value': round(p_value, 4),
+         # round(숫자, 소수점자리): 반올림 함수
+        # round(0.01234567, 4) = 0.0123
+        '판단': status
+    })
+
+# =============================================
+# [루프 밖] 표 출력
+# =============================================
+# 왜 루프 밖에 있냐?
+# 루프 안에 넣으면 반복할 때마다 출력됨
+# 4번 반복 → 표 4번 출력 (버그)
+# 루프 끝난 후 한 번만 출력해야 함
+
+# pd.DataFrame(): 리스트를 표 형태로 변환
+# pd = pandas 라이브러리 (import pandas as pd)
+# DataFrame = 행과 열이 있는 표
+adf_df =pd.DataFrame(adf_results)
+
+st.table(adf_df)
+
+# 차분 처리 (Differencing)
+# =============================================
+# [왜 하냐?]
+# ADF 검정 결과 환율, 국채금리가 불안정
+# 원본 그대로 쓰면 Granger 검정 결과 신뢰 불가
+# 차분 = 변화량으로 변환 → 안정화
+#
+# pct_change(): 변화율 계산 메서드
+# (오늘값 - 어제값) / 어제값
+# 예: 어제 환율 1380, 오늘 1390
+# → (1390 - 1380) / 1380 = 0.0072 (0.72% 상승)
+
+# 공포탐욕지수 차분
+# 변수명 뒤에 _diff 붙이는 건 관례
+# diff = difference(차이)의 줄임말
+df['Fear_Greed_diff'] =df['Fear_Greed'].pct_change()
+df['USD_diff'] =df['USD_KRW'].pct_change()
+df['BOND_diff'] =df['BOND'].pct_change()
+
+# Return은 이미 pct_change()로 만들었음
+# df['Return'] = df['Close'].pct_change() ← 위에서 이미 함
+# 그래서 차분 안 해도 됨
+
+# =============================================
+# 차분 후 ADF 재검정
+# =============================================
+# 차분 후 안정적으로 바뀌었는지 확인
+# 안 바뀌었으면 2차 차분 필요 (거의 없음)
+
+# st.write() 안에 ** ** = 마크다운 굵게 표시
+st.write("** 차분후 ADF 재검정:**")
+diff_targets ={
+    '공포탐욕지수 차분': 'Fear_Greed_diff',
+    '원달러 환율 차분': 'USD_diff',
+    '미국 국채금리 차분': 'BOND_diff',
+}
+
+diff_results =[]
+for name, col in diff_targets.items():
+    series = df[col].dropna()
+    result = adfuller(series)
+    p_value =result[1]
+
+    if p_value <0.05:
+        status ='안정적'
+    else:
+        status = "여전히 불안정"
+
+    diff_results.append({
+        '지표': name ,
+        'p-value': round(p_value, 4),
+        '판단' : status
+    })
+#루프 밖에서 한번만 표 출력
+diff_df =pd.DataFrame(diff_results)
+st.table(diff_df)
+
+# Granger 검정 데이터 준비
+# =============================================
+# 기존: 원본 Fear_Greed 사용 (불안정)
+# 수정: 차분된 Fear_Greed_diff 사용 (안정)
+#
+# df[[]]: 여러 컬럼 동시에 선택
+# .dropna(): NaN 있는 행 전체 제거
+# NaN 하나라도 있으면 그 행 전체 삭제
+# Granger 검정 함수 가져오기
+from statsmodels.tsa.stattools import grangercausalitytests
+
+df_granger = df[[
+    'Return',  #KOSpl 수익률
+    'Fear_Greed_diff', #차분된 공포 탐욕지수 (안정화됨)
+    'USD_diff', # 차분된 환율 (안정화됨)
+    'BOND_diff' #  차분된 국채 금리(안정화됨)
+]].dropna()
+
+# Granger 검정 실행
+# df_granger[['Return', 'Fear_Greed_diff']]:
+# → 4개 컬럼 중 2개만 선택해서 검정
+# → "Fear_Greed_diff가 Return을 예측하나?" 검정
+results = grangercausalitytests(
+    df_granger[['Return', 'Fear_Greed_diff']],
+    maxlag=20, #최대 20일후까지 영향 검정
+    verbose=False #터미널 출력끄기
+)
+
+
 
 # statsmodels에서 Granger 검정함수 가져오기 
 from statsmodels.tsa.stattools import grangercausalitytests
 
 #결측값(NaN) 제거
 # Granger 검증은 NAN이 있으면 오류남
-df_granger = df[['Fear_Greed', 'Return']].dropna()
+# 기존 Granger 검정 코드에서
+# Fear_Greed → Fear_Greed_diff 로 변경
+
+df_granger = df[['Fear_Greed_diff', 'Return']].dropna()
+# Fear_Greed_diff: 차분된 공포탐욕지수
+# Return: 이미 수익률 (차분된 것)
 # Return: KOSPI 일간 수익률 (Close의 pct_change)
 # 이 둘의 관계를 검정할 거야
 
 # Granger 검정 실행
 # maxlag=5: 최대 5일 전까지 영향을 볼 거야
 results = grangercausalitytests(
-    df_granger[['Return', 'Fear_Greed']],
+    df_granger[['Return', 'Fear_Greed_diff']],
     maxlag=20,
     verbose=False #터미널 출력끄기
 )
