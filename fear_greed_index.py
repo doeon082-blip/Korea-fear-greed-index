@@ -15,6 +15,18 @@ df_usd = fdr.DataReader('USD/KRW', '2020-01-01')
 # 환율 오르면 외국인 투자 감소 → 공포 신호
 # 그래서 역방향으로 정규화
 df_bond = fdr.DataReader('^TNX', '2020-01-01')
+# S&P500 데이터 수집
+# 미국 시장이 한국보다 하루 먼저 움직임
+# 선행 지표로 활용
+df_sp500 = fdr.DataReader('^GSPC', '2020-01-01')
+# VIX 데이터 수집
+# 미국 공포지수
+# 글로벌 불안감 측정
+df_vix = fdr.DataReader('^VIX','2020-01-01')
+# 금 가격
+# 안전자산 선호 지표
+# 불안할수록 금 가격 오름
+df_gold= fdr.DataReader('GC=F','2020-01-01')
 df['MA20'] =df ['Close'].rolling(20).mean()
 df['MA60'] =df['Close'].rolling(60).mean()
 df['MA120'] =df['Close'].rolling(120).mean()
@@ -33,20 +45,44 @@ ax2.set_title('거래량')
 ax2.legend()
 plt.tight_layout()
 
-def normalize(series):
-    return (series -series.min()) / (series.max() - series.min()) * 100
-df['MA20_gap_norm'] = normalize(df ['MA20_gap'])
+
+# 롤링 윈도우 정규화
+# 최근 252일(1년) 기준으로 정규화
+# 전역 정규화와 달리 과거 점수 변동 없음
+def normalize_rolling(series, window=252):
+    """
+    series: 계산할 주식 지표 데이터 (환율, 변동성 등)
+    window: 과거 몇 일 동안의 시장 체급을 기준으로 잡을 것인가? (252일 = 보통 1년 영업일)
+    """
+        # 1. [롤링 윈도우] 매일 아침 기준으로 '최근 1년 창문'을 열어서 그 안의 최솟값, 최댓값을 찾습니다.
+        # 이렇게 하면 미래의 데이터를 미리 훔쳐보는 오류(치팅)를 완벽하게 차단합니다.
+    rolling_min = series.rolling(window).min()
+    rolling_max = series.rolling(window).max()
+        # 2. [0~100 점수 환산] 최근 1년 체급 안에서 오늘의 위치를 점수(0~100)로 보정합니다.
+         # 💡 1e-8을 더하는 이유: 분모가 0이 되어 프로그램이 튕기는 현상(에러)을 컴퓨터 공학적으로 막아주는 안전장치입니다.
+    result = (series -rolling_min) / (rolling_max - rolling_min+ 1e-8) * 100
+
+        # 3. [초기 NaN 데이터 구제] 프로그램 시작 후 첫 1년(251일째까지)은 '과거 1년 데이터'가 없어서 빈 칸(NaN)이 됩니다.
+        # 빈 칸이 있으면 뒤쪽 계산에서 에러가 나기 때문에, 이 초반 구간만 전체 기간 기준으로 점수를 매겨서 채워줍니다(fillna).
+    global_min = series.min()
+    global_max = series.max()
+    global_norm = (series -global_min) / (global_max -global_min +1e-8) * 100
+
+         # 4. [최종 출력] 클로드 코드와 달리, 이제 진짜 롤링 계산된 결과물이 밖으로 튀어나갑니다!
+    return result.fillna(global_norm)
+    
+df['MA20_gap_norm'] = normalize_rolling(df ['MA20_gap'])
 df['Volume_change'] = df['Volume'].pct_change()
-df['Volume_norm'] = normalize(df['Volume_change'].dropna()).reindex(df.index)
+df['Volume_norm'] = normalize_rolling(df['Volume_change'].dropna()).reindex(df.index)
 df['Return'] = df['Close'].pct_change()
 df['Volatility'] = df['Return'].rolling(20).std()
-df['Volatility_norm'] = 100 - normalize(df['Volatility'])
+df['Volatility_norm'] = 100 - normalize_rolling(df['Volatility'])
 df['Momentum'] = df['Close'] / df['Close'].shift(20) - 1
-df['Momentum_norm'] = normalize(df['Momentum'])
+df['Momentum_norm'] = normalize_rolling(df['Momentum'])
 df['High_52w'] = df ['Close'].rolling(252).max()
 df['Low_52w'] = df['Close'].rolling(252).min()
 df['HL_ratio'] = (df['Close'] - df['Low_52w']) / (df['High_52w'] - df ['Low_52w']) * 100
-df['HL_norm'] = normalize(df['HL_ratio'])
+df['HL_norm'] = normalize_rolling(df['HL_ratio'])
 delta = df['Close'] .diff()
 gain =delta.clip(lower=0)
 loss = (-delta). clip(lower=0)
@@ -54,19 +90,45 @@ avg_gain = gain.rolling(14).mean()
 avg_loss = loss.rolling(14).mean()
 rs = avg_gain / avg_loss
 df['RSI'] = 100 - (100 / (1 + rs))
-df['RSI_norm'] = normalize(df['RSI'])
+df['RSI_norm'] = normalize_rolling(df['RSI'])
 df['USD_KRW'] = df_usd['Close'].reindex(df.index)
-df['USD_norm'] = 100 - normalize(df['USD_KRW'])
+df['USD_norm'] = 100 - normalize_rolling(df['USD_KRW'])
 df['BOND'] = df_bond['Close'].reindex(df.index)
-df['BOND_norm'] =100 - normalize(df['BOND'])
-# 8개 지표 평균으로 공포탐욕지수 계산
+df['BOND_norm'] =100 - normalize_rolling(df['BOND'])
+# S&P500 전일 수익률
+# 미국 시장이 한국보다 하루 먼저 움직임
+# 미국이 오늘 올랐으면 한국은 내일 오를 가능성
+# .shift(1): 하루 전 데이터로 맞추기
+df['SP500'] = df_sp500['Close'].reindex(df.index)
+df['SP500_return'] = df['SP500'].pct_change()
+# 수익률이 높을수록 탐욕신호
+df['SP500_norm'] = normalize_rolling(df['SP500_return'].shift(1))
+# VIX (미국 공포지수)
+# VIX 높으면 글로벌 공포 → 한국도 하락
+# 역방향: VIX 높으면 공포탐욕지수 낮춰야 함
+df['VIX'] = df_vix['Close'].reindex(df.index)
+df['VIX_norm'] = 100 - normalize_rolling(df['VIX'])
+# 금 가격
+# 금 오르면 안전자산 선호 → 주식 공포
+# 역방향 정규화
+df['GOLD'] = df_gold['Close'].reindex(df.index)
+df['GOLD_norm'] = 100 - normalize_rolling(df['GOLD'])
+# 11개 지표 평균으로 공포탐욕지수 계산
 # mean(axis=1): 행 방향으로 평균
 # NaN 있어도 나머지로 계산함
 
 indicator_cols_calc = [
-    'MA20_gap_norm', 'Volume_norm', 'Volatility_norm',
-    'Momentum_norm', 'HL_norm', 'RSI_norm',
-    'USD_norm', 'BOND_norm'
+    'MA20_gap_norm',# 이동평균 괴리율 (앵커링 효과)
+    'Volume_norm', # 거래량 (군중심리)
+    'Volatility_norm', # 변동성 (과잉반응)
+    'Momentum_norm', # 모멘텀 (추세 추종)
+    'HL_norm', # 52주 고저비율 (준거점 효과) 
+    'RSI_norm',   # RSI (과매수/과매도) 
+    'USD_norm',# 원달러 환율 (외부충격)
+    'BOND_norm',  # 미국 국채금리 (안전자산)
+    'SP500_norm', #s&p500 수익률(선행지표)
+    'VIX_norm', # VIX(글로벌 공포)
+    'GOLD_norm', # 금 가격(안전 자산 선호)
 ]
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
@@ -84,10 +146,10 @@ else:
 st.pyplot(fig)
 
 # 상관관계 분석
-# 6개 지표가 서로 얼마나 관련있는지 확인
+# 11개 지표가 서로 얼마나 관련있는지 확인
 
 
-# 8개 지표 컬럼만 모아서 새 데이터프레임 만들기
+# 11개 지표 컬럼만 모아서 새 데이터프레임 만들기
 indicator_cols  =[
     'MA20_gap_norm', # 이동 평균 괴리율
     'Volume_norm', # 거래량
@@ -96,7 +158,10 @@ indicator_cols  =[
     'HL_norm', #52주 고저비율
     'RSI_norm', # RSI
     'USD_norm', # 원달러 환율
-    'BOND_norm' #미국 10년채 국채 금리
+    'BOND_norm',#미국 10년채 국채 금리
+    'SP500_norm', #S&P500
+    'VIX_norm', #VIX 지수
+    'GOLD_norm' # GOLD 안전자산
 ]
 
 # 상관관계 계산
@@ -123,8 +188,8 @@ im =ax.imshow(corr_matrix, cmap='RdYlGn', vmin=-1, vmax=1)
 # 축 레이블 설정
 ax.set_xticks(range(len(indicator_cols)))
 ax.set_yticks(range(len(indicator_cols)))
-ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI'], rotation=45)
-ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI'])
+ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI','S&P500','VIX','금'], rotation=45)
+ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI','S&P500','VIX','금'])
 
 # 각 칸에 숫자표시
 for i in range(len(indicator_cols)):
@@ -353,30 +418,6 @@ results = grangercausalitytests(
     verbose=False #터미널 출력끄기
 )
 
-
-
-# statsmodels에서 Granger 검정함수 가져오기 
-from statsmodels.tsa.stattools import grangercausalitytests
-
-#결측값(NaN) 제거
-# Granger 검증은 NAN이 있으면 오류남
-# 기존 Granger 검정 코드에서
-# Fear_Greed → Fear_Greed_diff 로 변경
-
-df_granger = df[['Fear_Greed_diff', 'Return']].dropna()
-# Fear_Greed_diff: 차분된 공포탐욕지수
-# Return: 이미 수익률 (차분된 것)
-# Return: KOSPI 일간 수익률 (Close의 pct_change)
-# 이 둘의 관계를 검정할 거야
-
-# Granger 검정 실행
-# maxlag=5: 최대 5일 전까지 영향을 볼 거야
-results = grangercausalitytests(
-    df_granger[['Return', 'Fear_Greed_diff']],
-    maxlag=20,
-    verbose=False #터미널 출력끄기
-)
-
 # 결과 화면을 웹화면에 출력 하기
 st.markdown("---")
 st.subheader("📊 Granger 인과검정 결과")
@@ -408,7 +449,7 @@ prompt = f"""
 모든것을 논리적으로 분석하며 항상 진실만을 말한는 전문가 입니다
 오늘 한국 공포탐욕지수는 {today_score:.1f}점입니다.
 
-7개 지표 현황:
+11개 지표 현황:
 -이동평균 괴리율: {df['MA20_gap_norm'].iloc[-1]:.1f}
 -거래량: {df['Volume_norm'].iloc[-1]:.1f}
 -변동성: {df['Volatility_norm'].iloc[-1]:.1f}
@@ -417,6 +458,9 @@ prompt = f"""
 -원달러 환률: {df['USD_norm'].iloc[-1]:.1f}
 -미국 국채금리 {df['BOND_norm'].iloc[-1]:.1f}
 -RSI: {df['RSI_norm'].iloc[-1]:.1f}
+-SP500: {df['SP500_norm'].iloc[-1]:.1f}
+-VIX: {df['VIX_norm'].iloc[-1]:.1f}
+-GOLD: {df['GOLD_norm'].iloc[-1]:.1f}
 
 위 데이터 바탕으로 현재시장의 상황을 3줄로 분석요약해주세요
 """
