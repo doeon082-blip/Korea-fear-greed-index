@@ -439,6 +439,187 @@ for lag in range(1, 21):
 
     st.write(f"{lag}일 후: p-value = {p_value:.4f} -> {result_text}")
 
+# 뉴스 감성분석
+#하는 이유
+#숫자 지표고으로는 시장 심리를 완벽하게 읽을수가 없다
+#뉴스가 투자자 심리에 직접 영향을준다
+#뉴스 감성을 수치화해서 지표로 활용
+
+#feedparser:RSS 피드읽는 라이브러리
+#RSS;뉴스를 자동으로 구독하는방식
+
+#웹화면 구분선
+st.markdown("---")
+st.subheader("AI 자동 중요 분석" )
+st.write("6년치 데이터를 학습해서 AI 가 자동으로 중요한지표를 선택합니다")
+st.write("사람이 가중치를 따로 설정하지 않아도 됩니다")
+
+
+# XGBOOST 지표 중요도 선택
+# xgboost란
+# 여러개의 결정 트리를핮쳐서
+# 어떤지표가 수익률 예측에 중요한가
+# 자동으로 분석하는 머닝러신 모델
+
+# xgboost 라이즈러리 가져오기
+from xgboost import XGBClassifier
+# XGBClassifier: 분류 전용
+# 상승(1) / 횡보(0) / 하락(-1) 3가지로 분류
+# XGBRegressor(회귀)와 다름
+# 회귀: 정확한 숫자 예측
+# 분류: 방향 예측 (더 현실적)
+
+# shap: xgboost 결과를 사람이 이해 할수 있게
+# 왜 이지표가 중화한지 시각화
+import shap
+
+import numpy as np
+# numpy: 수학 계산 라이브러리
+# np.select: 조건에 따라 값 선택할 때 사용
+
+# 레이블 생성
+# 다음날 수익률 기준으로 3가지 분류
+# +0.5% 초과 → 1 (상승)
+# -0.5% 미만 → -1 (하락)
+# 그 사이  → 0 (횡보)
+#
+# .shift(-1): 하루 앞당기기
+# 오늘 지표로 내일 방향 예측하려고
+# 내일 수익률을 오늘 행에 붙여넣는 것
+next_return = df['Return'].shift(-1)
+
+# 조건 정의
+# conditions: 조건 목록
+conditions = [
+    next_return > 0.005, # +0.5% 초과 = 상승
+    next_return < -0.005 
+]
+choices = [2,0]
+# 2 = 상승
+# 1 = 횡보
+# 0 = 하락
+
+# np.select: 조건에 맞는 값 선택
+# default=0: 위 조건 둘 다 아니면 0 (횡보)
+df['label'] = np.select(conditions, choices, default=1)
+
+# 학습데이터 준비
+
+# X: 입력데이터(11개 지표)
+# y: 정답데이터(다음날 코스피 수익률)
+# 이 지표들 로 내일수익률 예측
+# dropna(): NAN 있는행제거
+
+# 입력데이터(11개지표)
+X=df[indicator_cols_calc].dropna()
+
+# 정답데이터 (다음날 수익률)
+#shift(-1): 하루 앞당기기
+# 오늘지표로 내일 수익률 예측
+y=df['label'].reindex(X.index).dropna()
+
+# x와 y 행수 맞추기
+# 둘다 같은날짜 사용
+X=X.reindex(y.index)
+
+# XGBoost모델학습
+
+# n_estimators=100 결정 트리100개 사용
+# randorm_state=42: 재현성(같은결과값나오게)
+# max_depth=3:트이깊이제한 (과지합방지)
+model=XGBClassifier(
+    n_estimators=100,
+    # 결정 트리 100개 사용
+    max_depth=3,
+    # 트리 깊이 3으로 제한
+    # 너무 깊으면 과적합 발생
+    random_state=42,
+    # 재현성 (항상 같은 결과)
+    eval_metric = 'mlogloss',
+    # 분류 모델 평가 방식
+)
+model.fit(X, y)
+# fit(): X(지표)로 y(방향) 예측하도록 학습
+
+# 지표별 중요도 추출
+# feature_importances_: 각 지표 중요도
+# 0~1 사이, 전체 합 = 1
+importance = pd.Series(
+    model.feature_importances_,
+    index = indicator_cols_calc
+).sort_values(ascending=False)
+# ascending=False: 높은 순서로 정렬
+
+# 중요도 막대 그래프
+fig_imp, ax_imp = plt.subplots(figsize =(10,6))
+importance.plot(kind='bar' , ax=ax_imp, color='steelblue')
+ax_imp.set_title('AI가 판단하는 지표별 중요도')
+ax_imp.set_xlabel('지표')
+ax_imp.set_ylabel('중요도')
+plt.xticks(rotation=45, ha='right')
+plt.tight_layout()
+st.pyplot(fig_imp)
+
+# SHAP 분석 (오늘 데이터)
+# 오늘 데이터 추출
+today_data = X.iloc[[-1]]
+# .iloc[[-1]]: 마지막 행 (오늘)
+# [[-1]] 대괄호 두 개: DataFrame 형태 유지
+
+# SHAP 계산
+explainer = shap.TreeExplainer(model)
+# TreeExplainer: XGBoost 전용 빠른 계산
+
+shap_values = explainer.shap_values(today_data)
+# shap_values: 각 지표가 얼마나 기여했는지
+ 
+# 절댓값 처리
+# 음수 SHAP = 하락에 기여
+# abs()로 절댓값 → 기여도 크기만 봄
+shap_today = pd.Series(
+    np.abs(shap_values[0]).mean(axis=1),
+    index = indicator_cols_calc
+).sort_values(ascending=False)
+
+#동적 가중치 계산
+# SHAP 절댓값을 가중치로 변환
+# 전체 합이 100이 되게 정규화
+dynamic_weights = shap_today / shap_today.sum() * 100
+
+
+# 동적 가중치로 새 공포탐욕지수 계산
+# NaN 있는 지표 자동 감지 후 제외
+# valid_cols: 마지막 행에 NaN 없는 지표만
+valid_cols = [col for col in indicator_cols_calc
+               if not pd.isna(df[col].iloc[-1])]
+
+# NaN 없는 지표 가중치만 추출
+valid_weights = dynamic_weights[valid_cols]
+
+# 가중치 합이 100되게 재정규화
+valid_weights = valid_weights / valid_weights.sum() * 100
+
+# 유효한 지표만으로 오늘 지수 계산
+today_dynamic = sum(
+    df[col].iloc[-1] * (valid_weights[col] / 100)
+    for col in valid_cols
+)
+# 결과 출력
+st.markdown('---')
+st.write("오늘 AI 분석 결과")
+st.write(f"기존지수 (동일 가중치): {today_score:.1f}점")
+st.write(f"AI 동적 가중치 지수: {today_dynamic:.1f}점")
+
+st.write(" 오늘 가장 중요한 지표 top 3:")
+for i, (idx, val) in enumerate(shap_today.head(3).items()):
+    weight = dynamic_weights[idx]
+    st.write(f"{i+1}위: {idx}  →  기여도: {weight:.1f}%")
+
+
+st.write(" 중요도 낮은 지표:")
+for idx, val in shap_today.tail(3).items():
+    st.write(f"{idx}: {dynamic_weights[idx]:.1f}%")
+
 # llm시장 분석 코멘트 생성
 # ollama의 qwen2.5:14b 모델 사용
 
