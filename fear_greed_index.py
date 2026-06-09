@@ -447,6 +447,80 @@ for lag in range(1, 21):
 
 #feedparser:RSS 피드읽는 라이브러리
 #RSS;뉴스를 자동으로 구독하는방식
+# 숫자 지표로만 완전히 시장심리를 못읽음
+# 뉴스가 투자자 심리에 직접적 영향을 줌
+
+import feedparser
+
+def get_news_sentiment():
+    try:
+        # 바깥쪽 try
+        # RSS 수집 실패하면 50.0 반환
+        feed = feedparser.parse(
+            "https://finance.naver.com/news/news_list.naver?mode=RSS"
+        )
+
+        # 뉴스 10개 제목 수집
+        news_titles = []
+        for entry in feed.entries[:10]:
+            news_titles.append(entry.title)
+
+        # 뉴스 없으면 중립 반환
+        if not news_titles:
+            return 50.0
+
+        # 뉴스 제목 하나로 합치기
+        combined = "\n".join(news_titles)
+
+        try:
+            # 안쪽 try
+            # LLM 실패하면 50.0 반환
+            import ollama
+            response = ollama.chat(
+                model='qwen2.5:14b',
+                messages=[{
+                    "role": "user",
+                    "content": f"""
+다음 한국 주식시장 뉴스들의 감성을 분석해줘.
+숫자로만 답해줘. (0~100)
+0: 극도의 공포
+50: 중립
+100: 극도의 탐욕
+
+뉴스:
+{combined}
+
+숫자만:"""
+                }]
+            )
+            score = float(response['message']['content'].strip())
+            return max(0, min(100, score))
+
+        except:
+            # 안쪽 except: LLM 오류
+            return 50.0
+
+    except:
+        # 바깥쪽 except: RSS 오류
+        return 50.0
+
+
+# 웹화면 출력
+st.markdown('---')
+st.subheader("📰 뉴스 감성 분석")
+with st.spinner("뉴스 분석중..."):
+    news_score = get_news_sentiment()
+
+if news_score >= 70:
+    news_status = "🟢 긍정적 (탐욕)"
+elif news_score >= 40:
+    news_status = "🟡 중립"
+else:
+    news_status = "🔴 부정적 (공포)"
+
+st.write(f"뉴스 감성 점수: {news_score:.1f} / 100")
+st.write(f"뉴스 분위기: {news_status}")
+st.write("※ 어제 뉴스 기준으로 오늘 지수에 반영됩니다")
 
 #웹화면 구분선
 st.markdown("---")
