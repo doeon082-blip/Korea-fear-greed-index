@@ -457,13 +457,14 @@ def get_news_sentiment():
         # 바깥쪽 try
         # RSS 수집 실패하면 50.0 반환
         feed = feedparser.parse(
-            "https://finance.naver.com/news/news_list.naver?mode=RSS"
+            "https://www.yna.co.kr/rss/economy.xml"
         )
 
         # 뉴스 10개 제목 수집
         news_titles = []
         for entry in feed.entries[:10]:
             news_titles.append(entry.title)
+        st.write(f"뉴스 제목들: {news_titles}")
 
         # 뉴스 없으면 중립 반환
         if not news_titles:
