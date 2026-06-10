@@ -445,73 +445,266 @@ for lag in range(1, 21):
 #뉴스가 투자자 심리에 직접 영향을준다
 #뉴스 감성을 수치화해서 지표로 활용
 
-#feedparser:RSS 피드읽는 라이브러리
 #RSS;뉴스를 자동으로 구독하는방식
-# 숫자 지표로만 완전히 시장심리를 못읽음
-# 뉴스가 투자자 심리에 직접적 영향을 줌
-
-import feedparser
+ # 숫자 지표로만 완전히 시장심리를 못읽음
+ # 뉴스가 투자자 심리에 직접적 영향을 줌
+# 예: 반도체 수출 호조 뉴스 → 시장 상승
+#     금리 인상 우려 뉴스 → 시장 하락
+# 왜 제목만 보내냐:
+# 1. 본문은 너무 길어서 LLM 속도 느려짐
+# 2. 저작권 문제 (본문 저장하면 안 됨)
+# 3. 제목만 봐도 감성 판단 충분
+# 왜 30개냐:
+# 10개는 대표성 부족
+# 30개면 오늘 시장 전반적 분위기 파악 가능
+# 반환값:
+# overall_score: 전체 감성 점수 (0~100)
+# news_list: 뉴스별 분석 결과 리스트
+# sector_data: 섹터별 감성 딕셔너리
+# dominant_sector: 오늘 주도 섹터
+#pos_count: 긍정 뉴스 개수
+# neg_count: 부정 뉴스 개수
+import feedparser #feedparser:RSS 피드읽는 라이브러리
+import json # JSON 파싱 라이브러리
+import re  # 정규표현식 (텍스트 패턴 찾기)
 
 def get_news_sentiment():
     try:
         # 바깥쪽 try
         # RSS 수집 실패하면 50.0 반환
+         # RSS 수집 자체가 실패할 때를 대비
+        # 인터넷 끊기거나 서버 오류날 수 있음
+        # 연합뉴스 경제 RSS 수집
+        # 왜 연합뉴스냐:
+        # → 네이버 RSS는 막혀있음 (테스트 결과)
+        # → 연합뉴스는 120개 이상 제공
+        # → 경제 뉴스 전문
         feed = feedparser.parse(
             "https://www.yna.co.kr/rss/economy.xml"
         )
 
-        # 뉴스 10개 제목 수집
+        # 뉴스 제목 30개만 수집
+        # feed.entries: 전체 뉴스 목록
+        # [:20]: 최신 30개만 (오래된 건 필요없음)
+        # entry.title: 뉴스 제목만 (본문 X)
         news_titles = []
-        for entry in feed.entries[:10]:
+        for entry in feed.entries[:20]:
             news_titles.append(entry.title)
-        st.write(f"뉴스 제목들: {news_titles}")
 
-        # 뉴스 없으면 중립 반환
+        # 뉴스가 하나도 없으면 기본값 반환
+        # RSS 서버 응답은 했는데 뉴스가 없는 경우
         if not news_titles:
-            return 50.0
-
-        # 뉴스 제목 하나로 합치기
-        combined = "\n".join(news_titles)
+            return 50.0,[], {}, '없음', 0, 0 , 0
+        # 뉴스 제목 특수문자 제거
+        # 큰따옴표, 말줄임표 등이 JSON 파싱 방해
+        clean_titles = []
+        for title in news_titles:
+            title = title.replace('"', '')
+            title = title.replace("'", '')
+            title = title.replace('…', '')
+            title = title.replace('\\', '')
+            title = title.replace('"', '')
+            title = title.replace('"', '')
+            clean_titles.append(title)
+        # 뉴스 제목들을 줄바꿈으로 합치기
+        # LLM에게 한 번에 전달하기 위해
+        # "\n".join(): 리스트를 줄바꿈으로 연결
+        # ["뉴스1", "뉴스2"] → "뉴스1\n뉴스2"
+        combined = "\n".join(clean_titles)
 
         try:
             # 안쪽 try
-            # LLM 실패하면 50.0 반환
+            # LLM 분석 실패할 때를 대비
+            # ollama 꺼져있거나 모델 없을 수 있음
+            
             import ollama
+            
             response = ollama.chat(
-                model='qwen2.5:14b',
-                messages=[{
-                    "role": "user",
-                    "content": f"""
-다음 한국 주식시장 뉴스들의 감성을 분석해줘.
-숫자로만 답해줘. (0~100)
-0: 극도의 공포
-50: 중립
-100: 극도의 탐욕
+                model='qwen2.5:32b',
+                options ={
+                    'num_predict': 8192 # 출력 길게 하기
+                },
+                messages=[
+                    {
+                    # system 역할:
+                        # LLM에게 역할 지정
+                        # user 메시지보다 먼저 읽힘
+                        # JSON만 출력하도록 강력하게 지시
+                        # 왜 필요하냐:
+                        # → LLM이 "네, 분석했습니다. {...}" 처럼
+                        #   앞뒤에 말 붙이는 걸 방지
+                    "role": "system",
+                    "content": """너는 한국 주식 시장  뉴스 분석 AI 야.
+반드시 JSON만 출력해. 다른 말은 절대 하지 마.
+앞에 설명도 없고 뒤에 설명도 없어. JSON만."""
+                    },
+
+                    {
+                        "role":"user",
+                        # f-string 안에서 JSON 쓰는 법:
+                        # {{ }} = 중괄호 문자 그대로 출력
+                        # {변수} = 변수값으로 교체
+                        # combined = 뉴스 제목들
+                        "content": f"""
+다음 뉴스를 분석해줘.
+
+{{
+    "dominant_sector": "반도체",
+    "sectors": {{
+        "반도체": "긍정",
+        "조선": "중립",
+        "방산": "부정",
+        "금융": "중립",
+        "부동산": "부정"
+    }},
+    news": [
+        {{
+            "title": "뉴스제목",
+            "sentiment": "긍정",
+            "sector": "반도체",
+            "reason": "이유",
+            "score": 70
+        }}
+    ]
+
+규칙:
+- overall_score: 0~100 숫자
+- sentiment: 긍정/부정/중립 중 하나
+- sector: 반도체/조선/방산/금융/부동산/소비재/기타 중 하나
+- score: 0~100 숫자
+- reason: 한 줄로 짧게
+- title 안에 큰따옴표(") 절대 사용 금지 
+- title: 반드시 실제 뉴스 제목 그대로 넣을 것
+- overall_score: 뉴스 전체 분위기 기반으로 직접 계산할 것
+- overall_score: 뉴스 전체 분석 후 직접 계산 (0~100)
+  → 긍정 뉴스 많으면 높게
+  → 부정 뉴스 많으면 낮게
 
 뉴스:
 {combined}
-
-숫자만:"""
-                }]
+"""
+                    }
+                ]
             )
-            score = float(response['message']['content'].strip())
-            return max(0, min(100, score))
+            # LLM 응답 텍스트 추출
+            # .strip(): 앞뒤 공백/줄바꿈 제거
+            raw = response['message']['content'].strip()
 
-        except:
-            # 안쪽 except: LLM 오류
-            return 50.0
+            # 마크다운 코드블록 제거
+            # LLM이 ```json {...} ``` 형태로 줄 수 있음
+            # split('```'): 백틱 기준으로 나누기
+            # [1]: 중간 부분 (JSON 내용)
+            if '```' in raw:
+                raw = raw.split('```')[1]
+                if raw.startswith('json'):
+                    # 'json' 문자 4글자 제거
+                    raw = raw[4:]
+            # 정규표현식으로 JSON 부분만 추출
+            # 왜 필요하냐:
+            # → LLM이 앞뒤에 말 붙여도 JSON만 추출
+            # → re.search: 패턴 찾기
+            # → r'\{.*\}': { 로 시작해서 } 로 끝나는 것
+            # → re.DOTALL: 줄바꿈도 포함
+            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
+            if json_match:
+                raw = json_match.group()
+                # trailing comma 자동 제거
+                # 왜 필요하냐:
+                # → LLM이 JSON 출력할 때 쉼표 습관적으로 붙임
+                # → {"key": "value",} 이런 형태
+                # → 파이썬 json.loads()는 이걸 오류로 처리
+                # → 파싱 전에 미리 제거해야 함
+                st.write(f"LLM 원본 출력: {raw[:500]}")
 
+                # re.sub(): 찾아서 바꾸기
+                # r',\s*}': 쉼표 + 공백 + 닫는 중괄호 패턴
+                # \s* = 공백 0개 이상
+                # 예: ,} 또는 ,   } 전부 찾아서 } 로 바꿈
+                raw = re.sub(r',\s*}', '}', raw)
+                # r',\s*]': 쉼표 + 공백 + 닫는 대괄호 패턴
+                # 배열 끝에 붙은 trailing comma 제거
+                # 예: {"sentiment": "긍정",] → {"sentiment": "긍정"]
+                raw = re.sub(r',\s*]', ']', raw)
+
+                # 제목 안의 큰따옴표 제거
+                # 뉴스 제목에 " 있으면 JSON 파싱 오류남
+                raw = raw.replace('\\"', '')
+
+            # JSON 문자열 → 파이썬 딕셔너리 변환
+            # json.loads(): 문자열을 딕셔너리로 변환
+            # '{"score": 57}' → {'score': 57}
+            result = json.loads(raw)
+            # 각 데이터 추출
+            # .get('키', 기본값):
+            # → 키가 없으면 기본값 반환
+            # → 오류 방지
+
+            # float() 변환 이유:
+            # LLM이 숫자를 문자열로 줄 수도 있음
+            # "57" → 57.0 으로 변환
+            overall_score = float(result.get('overall_score') or 50)
+            st.write(f"LLM 원본 점수: {result.get('overall_score')}")
+            news_list = result.get('news') or []
+            sector_data = result.get('sectors')or {} 
+            dominant_sector = result.get('dominant_sector') or '없음'
+            # 우리가 직접 긍정/부정 개수 세기
+            # 왜 LLM 숫자 안 쓰냐:
+            # → LLM이 직접 세면 실수함
+            # → 실제 뉴스별 분석 결과랑 안 맞음
+            # → 우리가 직접 세는 게 더 정확
+
+            # sum(): 합계 계산 함수
+            # 1 for news in news_list: 
+            #   → news_list에서 하나씩 꺼내서
+            #   → 조건 맞으면 1 추가
+            # if news.get('sentiment') == '긍정':
+            #   → sentiment가 긍정인 것만
+
+            # 예시:
+            # news_list = [
+            #   {'sentiment': '긍정'},  → 1
+            #   {'sentiment': '부정'},  → 0
+            #   {'sentiment': '긍정'},  → 1
+            # ]
+            # sum = 2 (긍정 2개)
+            positive_count = sum(
+                1 for news in news_list
+                if news.get('sentiment') == '긍정'
+            )
+
+            negative_count = sum (
+                1 for news in news_list 
+                if news.get('sentiment') == '부정'
+            )
+            neutral_count = sum(
+                1 for news in news_list
+                if news.get('sentiment') == '중립'
+            )
+
+            return overall_score, news_list, sector_data, dominant_sector, positive_count, negative_count , neutral_count
+        except Exception as e:
+            st.write(f"오류: {e}")
+            return 50.0, [], {}, '없음', 0, 0 , 0
     except:
-        # 바깥쪽 except: RSS 오류
-        return 50.0
-
-
+        # 바깥쪽 except: RSS 수집 오류
+        # 인터넷 연결 끊김 등
+        return 50.0, [], {}, '없음', 0, 0 , 0
+    
 # 웹화면 출력
 st.markdown('---')
 st.subheader("📰 뉴스 감성 분석")
-with st.spinner("뉴스 분석중..."):
-    news_score = get_news_sentiment()
 
+# st.spinner: 분석 중 로딩 표시
+# with 블록 안의 코드 실행 중에 스피너 보임
+with st.spinner("뉴스 분석중..."):
+     # 함수 반환값 6개 받기
+    # 변수 6개에 각각 저장
+    news_score, news_list, sector_data, dominant_sector, pos_count, neg_count , neutral_count = get_news_sentiment()
+
+# 전체 감성 상태 분류
+# 70 이상: 긍정 (탐욕)
+# 40~70: 중립
+# 40 미만: 부정 (공포)
 if news_score >= 70:
     news_status = "🟢 긍정적 (탐욕)"
 elif news_score >= 40:
@@ -521,8 +714,46 @@ else:
 
 st.write(f"뉴스 감성 점수: {news_score:.1f} / 100")
 st.write(f"뉴스 분위기: {news_status}")
+st.write(f"긍정 뉴스: {pos_count}개/ 부정 뉴스: {neg_count}개")
+st.write(f"오늘 주도 섹터: {dominant_sector}")
 st.write("※ 어제 뉴스 기준으로 오늘 지수에 반영됩니다")
 
+# 섹터별 감성 출력
+# sector_data: {'반도체': '긍정', '조선': '부정', ...}
+# .items(): 키-값 동시에 꺼내기
+if sector_data:
+    st.write("**📊 섹터별 감성:**")
+    for sector, sentiment in sector_data.items():
+        if sentiment == '긍정':
+            emoji = "🟢"
+        elif sentiment == '부정':
+            emoji = "🔴"
+        else:
+            emoji = "🟡"
+        st.write(f"{emoji} {sector}: {sentiment}")
+
+# 뉴스별 분석 결과 출력
+# news.get('키', 기본값):
+# → 키 없을 때 오류 방지]
+if news_list:
+    st.write("**📋 뉴스별 분석:**")
+    for news in news_list:
+        if news.get('sentiment') == '긍정':
+            emoji = "🟢"
+        elif news.get('sentiment') == '부정':
+            emoji = "🔴"
+        else:
+            emoji = "🟡"
+        st.write(
+            f"{emoji} [{news.get('sector', '')}] "
+            f"{news.get('title' , '')}"
+        )
+        st.write(
+            f"  → {news.get('sentiment' , '')} "
+            f"({news.get('score', 0)}점): "
+            f"{news.get('reason', '')}"
+        )
+        
 #웹화면 구분선
 st.markdown("---")
 st.subheader("AI 자동 중요 분석" )
