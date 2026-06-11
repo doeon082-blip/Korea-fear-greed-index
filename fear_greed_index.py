@@ -519,10 +519,10 @@ def get_news_sentiment():
             
             import ollama
             
-            response = ollama.chat(
-                model='qwen2.5:32b',
+            response1 = ollama.chat(
+                model='qwen2.5:14b',
                 options ={
-                    'num_predict': 8192 # 출력 길게 하기
+                    'num_predict': 4096 # 출력 길게 하기
                 },
                 messages=[
                     {
@@ -549,6 +549,7 @@ def get_news_sentiment():
 다음 뉴스를 분석해줘.
 
 {{
+    "overall_score" : 50
     "dominant_sector": "반도체",
     "sectors": {{
         "반도체": "긍정",
@@ -557,7 +558,7 @@ def get_news_sentiment():
         "금융": "중립",
         "부동산": "부정"
     }},
-    news": [
+    "news": [
         {{
             "title": "뉴스제목",
             "sentiment": "긍정",
@@ -566,6 +567,7 @@ def get_news_sentiment():
             "score": 70
         }}
     ]
+}}
 
 규칙:
 - overall_score: 0~100 숫자
@@ -581,72 +583,105 @@ def get_news_sentiment():
   → 부정 뉴스 많으면 낮게
 
 뉴스:
-{combined}
+{chr(10).join(clean_titles[:10])}
 """
                     }
                 ]
             )
+            response2 = ollama.chat(
+                model = 'qwen2.5:14b',
+                options ={
+                    'num_predict' : 4096
+                },
+                messages = [
+                    {"role": "system", "content": "JSON만 출력해."} ,
+                    {"role": "user", "content": f"""
+            다음 뉴스 분석 해줘.
+            {{"news": [{{"title":"","sentiment": " 긍정 ", "sector" : "기타" , "reason":"","score": 70}}]}}
+            규칙:
+            - sentiment: 긍정/부정/중립
+            - sector: 반도체/조선/방산/금융/부동산/소비재/기타
+            - title 안에 큰따옴표 절대 금지
+            
+            뉴스:
+            {chr(10).join(clean_titles[10:20])}
+            """ }                                                
+                    ]
+            )
             # LLM 응답 텍스트 추출
             # .strip(): 앞뒤 공백/줄바꿈 제거
-            raw = response['message']['content'].strip()
+            raw1 = response1['message']['content'].strip()
 
             # 마크다운 코드블록 제거
             # LLM이 ```json {...} ``` 형태로 줄 수 있음
             # split('```'): 백틱 기준으로 나누기
             # [1]: 중간 부분 (JSON 내용)
-            if '```' in raw:
-                raw = raw.split('```')[1]
-                if raw.startswith('json'):
+            if '```' in raw1:
+                raw1 = raw1.split('```')[1]
+                if raw1.startswith('json'):
                     # 'json' 문자 4글자 제거
-                    raw = raw[4:]
+                    raw1 = raw1[4:]
             # 정규표현식으로 JSON 부분만 추출
             # 왜 필요하냐:
             # → LLM이 앞뒤에 말 붙여도 JSON만 추출
             # → re.search: 패턴 찾기
             # → r'\{.*\}': { 로 시작해서 } 로 끝나는 것
             # → re.DOTALL: 줄바꿈도 포함
-            json_match = re.search(r'\{.*\}', raw, re.DOTALL)
-            if json_match:
-                raw = json_match.group()
+            json_match1 = re.search(r'\{.*\}', raw1, re.DOTALL)
+            if json_match1:
+                raw1 = json_match1.group()
                 # trailing comma 자동 제거
                 # 왜 필요하냐:
                 # → LLM이 JSON 출력할 때 쉼표 습관적으로 붙임
                 # → {"key": "value",} 이런 형태
                 # → 파이썬 json.loads()는 이걸 오류로 처리
                 # → 파싱 전에 미리 제거해야 함
-                st.write(f"LLM 원본 출력: {raw[:500]}")
 
                 # re.sub(): 찾아서 바꾸기
                 # r',\s*}': 쉼표 + 공백 + 닫는 중괄호 패턴
                 # \s* = 공백 0개 이상
                 # 예: ,} 또는 ,   } 전부 찾아서 } 로 바꿈
-                raw = re.sub(r',\s*}', '}', raw)
+                raw1= re.sub(r',\s*}', '}', raw1)
                 # r',\s*]': 쉼표 + 공백 + 닫는 대괄호 패턴
                 # 배열 끝에 붙은 trailing comma 제거
                 # 예: {"sentiment": "긍정",] → {"sentiment": "긍정"]
-                raw = re.sub(r',\s*]', ']', raw)
+                raw1 = re.sub(r',\s*]', ']', raw1)
 
                 # 제목 안의 큰따옴표 제거
                 # 뉴스 제목에 " 있으면 JSON 파싱 오류남
-                raw = raw.replace('\\"', '')
+                raw1 = raw1.replace('\\"', '')
 
             # JSON 문자열 → 파이썬 딕셔너리 변환
             # json.loads(): 문자열을 딕셔너리로 변환
             # '{"score": 57}' → {'score': 57}
-            result = json.loads(raw)
+            result1 = json.loads(raw1)
             # 각 데이터 추출
             # .get('키', 기본값):
             # → 키가 없으면 기본값 반환
             # → 오류 방지
 
+            # raw 2 피싱
+            raw2 = response2['message']['content'].strip()
+            if '```' in raw2:
+                raw2 = raw2.split('```')[1]
+                if raw2.startswith('json'):
+                    raw2 = raw2[4:]
+            json_match2 = re.search(r'\{.*\}',raw2 , re.DOTALL)
+            if json_match2:
+                raw2 = json_match2.group()
+            raw2 = re.sub(r',\s*}', '}', raw2)
+            raw2 = re.sub(r',\s*]', ']', raw2)
+            raw2 = raw2.replace('\\"','')
+            result2 = json.loads(raw2)
+
             # float() 변환 이유:
             # LLM이 숫자를 문자열로 줄 수도 있음
             # "57" → 57.0 으로 변환
-            overall_score = float(result.get('overall_score') or 50)
-            st.write(f"LLM 원본 점수: {result.get('overall_score')}")
-            news_list = result.get('news') or []
-            sector_data = result.get('sectors')or {} 
-            dominant_sector = result.get('dominant_sector') or '없음'
+            overall_score = float(result1.get('overall_score') or 50)
+            st.write(f"LLM 원본 점수: {result1.get('overall_score')}")
+            news_list = (result1.get('news') or []) + (result2.get('news') or [])
+            sector_data = result1.get('sectors')or {} 
+            dominant_sector = result1.get('dominant_sector') or '없음'
             # 우리가 직접 긍정/부정 개수 세기
             # 왜 LLM 숫자 안 쓰냐:
             # → LLM이 직접 세면 실수함
