@@ -27,6 +27,14 @@ df_vix = fdr.DataReader('^VIX','2020-01-01')
 # 안전자산 선호 지표
 # 불안할수록 금 가격 오름
 df_gold= fdr.DataReader('GC=F','2020-01-01')
+import pandas as pd
+# VKOSPI CSV 읽기
+# vkospi_update.py 실행하면 생성됨
+df_vkospi = pd.read_csv(
+    "vkospi_data.csv",
+    index_col =0,   # 첫 번째 열을 인덱스로
+    parse_dates= True  # 날짜 형식으로 변환 True가 문자열에서 날짜형식으로변한 False는 문자열 그대로 오류남
+)
 df['MA20'] =df ['Close'].rolling(20).mean()
 df['MA60'] =df['Close'].rolling(60).mean()
 df['MA120'] =df['Close'].rolling(120).mean()
@@ -117,6 +125,14 @@ df['GOLD_norm'] = 100 - normalize_rolling(df['GOLD'])
 # mean(axis=1): 행 방향으로 평균
 # NaN 있어도 나머지로 계산함
 
+# VKOSPI 정규화
+# 한국판 VIX
+# 높을수록 시장 불안 = 공포 신호
+# 역방향 정규화
+# → VIX_norm 랑 같은 방식
+df['VKOSPI'] = df_vkospi['종가'].reindex(df.index)
+df['VKOSPI_norm']= 100 - normalize_rolling(df['VKOSPI'])
+
 indicator_cols_calc = [
     'MA20_gap_norm',# 이동평균 괴리율 (앵커링 효과)
     'Volume_norm', # 거래량 (군중심리)
@@ -129,6 +145,7 @@ indicator_cols_calc = [
     'SP500_norm', #s&p500 수익률(선행지표)
     'VIX_norm', # VIX(글로벌 공포)
     'GOLD_norm', # 금 가격(안전 자산 선호)
+    'VKOSPI_norm' # vkospi( 한국형 탐욕지수)
 ]
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
@@ -465,8 +482,6 @@ for lag in range(1, 21):
 #pos_count: 긍정 뉴스 개수
 # neg_count: 부정 뉴스 개수
 import feedparser #feedparser:RSS 피드읽는 라이브러리
-import json # JSON 파싱 라이브러리
-import re  # 정규표현식 (텍스트 패턴 찾기)
 
 # 1시간 캐싱 추가
 @st.cache_data(ttl=3600)
