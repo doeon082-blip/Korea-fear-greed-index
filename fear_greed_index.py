@@ -27,6 +27,17 @@ df_vix = fdr.DataReader('^VIX','2020-01-01')
 # 안전자산 선호 지표
 # 불안할수록 금 가격 오름
 df_gold= fdr.DataReader('GC=F','2020-01-01')
+# 개인투자자 순매수 데이터 읽기
+# 왜 CSV로 읽냐:
+# → pykrx가 Python 3.14 호환 안 됨
+# → vkospi_update.py 에서 미리 저장한 CSV 읽기
+# → pykrx 없이 pandas만으로 가능
+df_retail = pd.read_csv(
+    "retail_data.csv",
+    index_col = 0 ,
+    parse_dates = True
+)
+print(df_retail.columns.tolist())
 import pandas as pd
 # VKOSPI CSV 읽기
 # vkospi_update.py 실행하면 생성됨
@@ -121,10 +132,14 @@ df['VIX_norm'] = 100 - normalize_rolling(df['VIX'])
 # 역방향 정규화
 df['GOLD'] = df_gold['Close'].reindex(df.index)
 df['GOLD_norm'] = 100 - normalize_rolling(df['GOLD'])
-# 11개 지표 평균으로 공포탐욕지수 계산
-# mean(axis=1): 행 방향으로 평균
-# NaN 있어도 나머지로 계산함
-
+# 개인투자자 순매수 정규화
+# 개인 순매수 = 개인 매수 - 개인 매도
+# 높을수록 개인이 많이 삼 = 탐욕 신호
+# 낮을수록 개인이 많이 팜 = 공포 신호
+df['RETAIL'] = df_retail['개인'].reindex(df.index)
+df['RETAIL_norm'] = normalize_rolling(df['RETAIL']) 
+print(df['RETAIL_norm'].iloc[-1])
+print(df['RETAIL'].iloc[-1])
 # VKOSPI 정규화
 # 한국판 VIX
 # 높을수록 시장 불안 = 공포 신호
@@ -145,7 +160,8 @@ indicator_cols_calc = [
     'SP500_norm', #s&p500 수익률(선행지표)
     'VIX_norm', # VIX(글로벌 공포)
     'GOLD_norm', # 금 가격(안전 자산 선호)
-    'VKOSPI_norm' # vkospi( 한국형 탐욕지수)
+    'VKOSPI_norm', # vkospi( 한국형 탐욕지수)
+    'RETAIL_norm' # 개인투자자 순매수(동학개미))
 ]
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
@@ -163,10 +179,10 @@ else:
 st.pyplot(fig)
 
 # 상관관계 분석
-# 11개 지표가 서로 얼마나 관련있는지 확인
+# 13개 지표가 서로 얼마나 관련있는지 확인
 
 
-# 11개 지표 컬럼만 모아서 새 데이터프레임 만들기
+# 13개 지표 컬럼만 모아서 새 데이터프레임 만들기
 indicator_cols  =[
     'MA20_gap_norm', # 이동 평균 괴리율
     'Volume_norm', # 거래량

@@ -27,6 +27,30 @@ df_vkospi = stock.get_index_ohlcv(
     "20261231", # 종료일
     "1005" # vkospi 코드
 )
+# 개인투자자 순매수 데이터 수집
+# 왜 필요하냐:
+# → 한국 시장은 개인투자자 비중 높음
+# → 개인이 많이 사면 탐욕 신호
+# → 개인이 많이 팔면 공포 신호
+# → 동학개미 효과 반영
+# get_market_trading_value_by_date():
+# → 투자자별 매매 현황 가져오는 함수
+# → 개인/기관/외국인 구분해서 보여줌
+df_retail = stock.get_market_trading_value_by_date(
+    "20200102", # 시작일
+                # 20200101은 공휴일이라 2일부터 시작
+    "20261231", # 종료일
+    "KOSPI", # KOSPI 전체 시장 기준
+    detail = True   # 투자자별 상세 데이터 가져오기
+                    # True: 개인/기관/외국인 구분
+                    # False: 합계만
+)
+df_retail.to_csv("retail_data.csv")
+# index=True 기본값
+# → 날짜 인덱스도 같이 저장
+print("개인 투자자 데이터 저장 완료")
+print(f"데이터 기간:{df_retail.index[0]} ~ {df_retail.index[-1]}")
+print(f"총{len(df_retail)}개 데이터")
 # CSV로 저장
 # 왜 CSV냐:
 # → 메인 코드(3.14)에서 읽을 수 있음
