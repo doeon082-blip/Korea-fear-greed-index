@@ -27,6 +27,30 @@ df_vix = fdr.DataReader('^VIX','2020-01-01')
 # 안전자산 선호 지표
 # 불안할수록 금 가격 오름
 df_gold= fdr.DataReader('GC=F','2020-01-01')
+# 외국인 순매수 CSV 읽기
+df_foreign = pd.read_csv(
+    "foreign_data.csv" ,
+    index_col = 0 ,
+    parse_dates = True
+)
+# 기관 순매수 CSV 읽기
+df_institution= pd.read_csv(
+    "institution_data.csv" ,
+    index_col = 0 ,
+    parse_dates = True
+)
+# 펀더멘털 데이터 CSV 읽기
+df_fundamental = pd.read_csv (
+    "fundamental_data,csv" ,
+    index_col = 0,
+    parse_dates = True
+)
+# 외국인 한도소진율 CSV 읽기
+df_foreign_limit = pd.read_csv(
+    "foreign_limit_data.csv",
+    index_col = 0 ,
+    parse_dates = True
+)
 # 개인투자자 순매수 데이터 읽기
 # 왜 CSV로 읽냐:
 # → pykrx가 Python 3.14 호환 안 됨
@@ -37,7 +61,6 @@ df_retail = pd.read_csv(
     index_col = 0 ,
     parse_dates = True
 )
-print(df_retail.columns.tolist())
 import pandas as pd
 # VKOSPI CSV 읽기
 # vkospi_update.py 실행하면 생성됨
@@ -132,14 +155,32 @@ df['VIX_norm'] = 100 - normalize_rolling(df['VIX'])
 # 역방향 정규화
 df['GOLD'] = df_gold['Close'].reindex(df.index)
 df['GOLD_norm'] = 100 - normalize_rolling(df['GOLD'])
+# PBR 정규화
+# PBR: 주가순자산비율
+# → PER이랑 같은 방식
+# → 방향성은 XGBoost + SHAP이 판단
+df['PBR'] = df_fundamental['PBR'].reindex(df.index)
+# .reindex(): KOSPI 날짜 기준으로 맞추기
+# → 공휴일 등 날짜 불일치 해결
+df['PBR_norm']= normalize_rolling(df['PBR'])
+# PER 정규화
+# PER: 주가수익비율
+# → KOSPI 전체 밸류에이션 지표
+# → 방향성은 XGBoost + SHAP이 판단
+df['PER'] = df_fundamental['PER'].reindex(df.index)
+df['PER_norm'] = normalize_rolling(df['PER'])
+# 배당수익률 정규화
+# 배당수익률: 배당금 / 주가
+# → 높으면 안전자산 선호
+# → 방향성은 XGBoost + SHAP이 판단
+df['DIV'] = df_fundamental['배당수익률'].reindex(df.index)
+df['DIV_norm'] = normalize_rolling(df['DIV'])
 # 개인투자자 순매수 정규화
 # 개인 순매수 = 개인 매수 - 개인 매도
 # 높을수록 개인이 많이 삼 = 탐욕 신호
 # 낮을수록 개인이 많이 팜 = 공포 신호
 df['RETAIL'] = df_retail['개인'].reindex(df.index)
 df['RETAIL_norm'] = normalize_rolling(df['RETAIL']) 
-print(df['RETAIL_norm'].iloc[-1])
-print(df['RETAIL'].iloc[-1])
 # VKOSPI 정규화
 # 한국판 VIX
 # 높을수록 시장 불안 = 공포 신호
@@ -147,7 +188,15 @@ print(df['RETAIL'].iloc[-1])
 # → VIX_norm 랑 같은 방식
 df['VKOSPI'] = df_vkospi['종가'].reindex(df.index)
 df['VKOSPI_norm']= 100 - normalize_rolling(df['VKOSPI'])
-
+# 외국인 순매수 정규화
+df['FOREIGN'] = df_foreign['외국인'].reindex(df.index)
+df['FOREIGN_norm'] = normalize_rolling(df['FOREIGN'])
+# 기관 순매수 정규화
+df['INSTITUTION'] = df_institution['기관'].reindex(df.index)
+df['INSTITUTION_norm'] = normalize_rolling(df['INSTITUTION'])
+# 외국인 한도소진율 정규화
+df['FOREIGN_LIMIT'] = df_foreign_limit['한도소진률'].reindex(df.index)
+df['FOREIGN_LIMIT_norm'] = normalize_rolling(df['FOREIGN_LIMIT'])
 indicator_cols_calc = [
     'MA20_gap_norm',# 이동평균 괴리율 (앵커링 효과)
     'Volume_norm', # 거래량 (군중심리)
@@ -161,7 +210,13 @@ indicator_cols_calc = [
     'VIX_norm', # VIX(글로벌 공포)
     'GOLD_norm', # 금 가격(안전 자산 선호)
     'VKOSPI_norm', # vkospi( 한국형 탐욕지수)
-    'RETAIL_norm' # 개인투자자 순매수(동학개미))
+    'RETAIL_norm', # 개인투자자 순매수(동학개미))
+    'FOREIGN_norm', #외국인 순매수
+    'INSTITUTION_norm' , # 기관 순매수
+    'PER_norm' , # KOSPI 전체 PER
+    'PBR_norm' , # KOSPI 전체 PBR
+    'DIV_norm' ,  # KOSPI 전체 배당수익률
+    'FOREIGN_LIMIT' # 외국인 한도소진율
 ]
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
@@ -1056,13 +1111,13 @@ st.write(f"기존지수 (동일 가중치): {today_score:.1f}점")
 st.write(f"AI 동적 가중치 지수: {today_dynamic:.1f}점")
 
 st.write(" 오늘 가장 중요한 지표 top 3:")
-for i, (idx, val) in enumerate(shap_today.head(3).items()):
+for i, (idx, val) in enumerate(shap_today.head(5).items()):
     weight = dynamic_weights[idx]
     st.write(f"{i+1}위: {idx}  →  기여도: {weight:.1f}%")
 
 
 st.write(" 중요도 낮은 지표:")
-for idx, val in shap_today.tail(3).items():
+for idx, val in shap_today.tail(5).items():
     st.write(f"{idx}: {dynamic_weights[idx]:.1f}%")
 
 # llm시장 분석 코멘트 생성
