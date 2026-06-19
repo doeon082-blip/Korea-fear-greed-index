@@ -41,7 +41,7 @@ df_institution= pd.read_csv(
 )
 # 펀더멘털 데이터 CSV 읽기
 df_fundamental = pd.read_csv (
-    "fundamental_data,csv" ,
+    "fundamental_data.csv" ,
     index_col = 0,
     parse_dates = True
 )
@@ -216,7 +216,7 @@ indicator_cols_calc = [
     'PER_norm' , # KOSPI 전체 PER
     'PBR_norm' , # KOSPI 전체 PBR
     'DIV_norm' ,  # KOSPI 전체 배당수익률
-    'FOREIGN_LIMIT' # 외국인 한도소진율
+    'FOREIGN_LIMIT_norm' # 외국인 한도소진율
 ]
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
@@ -1038,49 +1038,41 @@ model=XGBClassifier(
     eval_metric = 'mlogloss',
     # 분류 모델 평가 방식
 )
-model.fit(X, y)
-# fit(): X(지표)로 y(방향) 예측하도록 학습
-
-# 지표별 중요도 추출
-# feature_importances_: 각 지표 중요도
-# 0~1 사이, 전체 합 = 1
-importance = pd.Series(
-    model.feature_importances_,
-    index = indicator_cols_calc
-).sort_values(ascending=False)
-# ascending=False: 높은 순서로 정렬
-
-# 중요도 막대 그래프
-fig_imp, ax_imp = plt.subplots(figsize =(10,6))
-importance.plot(kind='bar' , ax=ax_imp, color='steelblue')
-ax_imp.set_title('AI가 판단하는 지표별 중요도')
-ax_imp.set_xlabel('지표')
-ax_imp.set_ylabel('중요도')
-plt.xticks(rotation=45, ha='right')
-plt.tight_layout()
-st.pyplot(fig_imp)
-
-# SHAP 분석 (오늘 데이터)
-# 오늘 데이터 추출
-today_data = X.iloc[[-1]]
-# .iloc[[-1]]: 마지막 행 (오늘)
-# [[-1]] 대괄호 두 개: DataFrame 형태 유지
-
-# SHAP 계산
-explainer = shap.TreeExplainer(model)
-# TreeExplainer: XGBoost 전용 빠른 계산
-
-shap_values = explainer.shap_values(today_data)
-# shap_values: 각 지표가 얼마나 기여했는지
- 
-# 절댓값 처리
-# 음수 SHAP = 하락에 기여
-# abs()로 절댓값 → 기여도 크기만 봄
+# AFI (Aggregated Feature Importance)
+# 왜 필요하냐:
+# → XGBoost는 실행할 때마다 결과 조금씩 달라짐
+# → 100번 다른 seed로 반복
+# → 평균 내면 안정적인 가중치
+shap_list=[]
+# 100번 SHAP 결과 저장할 빈 리스트
+for seed in range(100):
+    # seed 0부터 99까지 100번 반복
+    # 매번 다른 random_state 사용
+    model = XGBClassifier(
+        n_estimators = 100,
+        max_depth = 3,
+        learning_rate = 0.1 ,
+        eval_metric = 'mlogloss',
+        random_state = seed #매번 다를 시도
+    )
+    model.fit(X,y)
+    # 매번 다른 seed로 학습
+    today_data = X.iloc[[-1]]
+    # 오늘 데이터 (마지막 행)
+    explainer = shap.TreeExplainer(model)
+    shap_values = explainer.shap_values(today_data)
+    # 오늘 데이터 SHAP 계산
+    shap_abs = np.abs(
+        np.array(shap_values)
+    ).reshape(-1, len(indicator_cols_calc)).mean(axis=0)    # 57개를 (3, 19)로 모양 변경
+                                                            # 그 다음 3개 평균 → 19개
+    shap_list.append(shap_abs)
+    # 리스트에 추가
+shap_avg = np.mean(shap_list, axis = 0)
 shap_today = pd.Series(
-    np.abs(shap_values[0]).mean(axis=1),
+    shap_avg,
     index = indicator_cols_calc
-).sort_values(ascending=False)
-
+).sort_values(ascending = False)
 #동적 가중치 계산
 # SHAP 절댓값을 가중치로 변환
 # 전체 합이 100이 되게 정규화
