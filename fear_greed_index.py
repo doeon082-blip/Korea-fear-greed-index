@@ -1003,24 +1003,31 @@ choices = [2,0]
 # default=0: 위 조건 둘 다 아니면 0 (횡보)
 df['label'] = np.select(conditions, choices, default=1)
 
-# 학습데이터 준비
+# 롤링 학습데이터 준비
+# 바꾸는 이유
+# 기존 - 전체 데이터로 학습 
+# 문제 - 미래 데이터 참조(Look - ahead bias)
+# 예 - 오늘 학습할때 내년 데이터도 봄
+# L00k - ahead bias 란
+# -미래 과보로 과거를 예측하는것
+# -실제 투자에선 불가능한 상황
+# -모델 성능이 실제 보다 좋아지는 착시 
 
-# X: 입력데이터(11개 지표)
-# y: 정답데이터(다음날 코스피 수익률)
-# 이 지표들 로 내일수익률 예측
-# dropna(): NAN 있는행제거
-
-# 입력데이터(11개지표)
-X=df[indicator_cols_calc].dropna()
-
-# 정답데이터 (다음날 수익률)
-#shift(-1): 하루 앞당기기
-# 오늘지표로 내일 수익률 예측
-y=df['label'].reindex(X.index).dropna()
-
-# x와 y 행수 맞추기
-# 둘다 같은날짜 사용
-X=X.reindex(y.index)
+# 전체 데이터 준비
+X_all=df[indicator_cols_calc].dropna()
+y_all=df['label'].reindex(X_all.index).dropna()
+X_all=X_all.reindex(y_all.index)
+# 오늘 기준 과거 252일만 슬라이싱
+# iloc[-252:] 마지막 252행 (최근 1년)
+X=X_all.iloc[-252:]
+#iloc[-252:]:마지막 252개
+# 왜 252냐면 : 1년 영업일 기준
+y=y_all.iloc[-252:]
+# 오늘 데이터는 전터에서 가져오기
+# 왜냐면: 오늘 데이터로 예기해야 하니깐
+X_today = X_all.iloc[[-1]]
+# .iloc[[-1]] :마지막 행(오늘)
+# [[-1]] 대괄호 두개 : DataFrame 형태 유지
 
 # XGBoost모델학습
 
@@ -1038,11 +1045,20 @@ model=XGBClassifier(
     eval_metric = 'mlogloss',
     # 분류 모델 평가 방식
 )
-# AFI (Aggregated Feature Importance)
-# 왜 필요하냐:
-# → XGBoost는 실행할 때마다 결과 조금씩 달라짐
-# → 100번 다른 seed로 반복
-# → 평균 내면 안정적인 가중치
+# AFI (Aggregated Feature Importance) + 양상블
+# 양상블 이란
+# - 여러 모델 동시 학습
+# - 각각 SHAP 계산
+# - 평균내서 최종 결정
+# - 하나만 쓸때보다 안정적
+# 3가지 모델
+# XGBoost: 그래디언트 부스팅
+# LightGBM: XGBoost보다 빠른 버전
+# RandomForest: 배깅 방식(다른계열)
+
+from lightgbm import LGBMClassifier
+# LightGBM: 마이크로 소프트가 만든 모델
+from sklearn.ensemble import RandomForestClassifier
 shap_list=[]
 # 100번 SHAP 결과 저장할 빈 리스트
 for seed in range(100):
@@ -1056,11 +1072,9 @@ for seed in range(100):
         random_state = seed #매번 다를 시도
     )
     model.fit(X,y)
-    # 매번 다른 seed로 학습
-    today_data = X.iloc[[-1]]
     # 오늘 데이터 (마지막 행)
     explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(today_data)
+    shap_values = explainer.shap_values(X_today)
     # 오늘 데이터 SHAP 계산
     shap_abs = np.abs(
         np.array(shap_values)
