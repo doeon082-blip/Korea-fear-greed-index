@@ -61,7 +61,6 @@ df_retail = pd.read_csv(
     index_col = 0 ,
     parse_dates = True
 )
-import pandas as pd
 # VKOSPI CSV 읽기
 # vkospi_update.py 실행하면 생성됨
 df_vkospi = pd.read_csv(
@@ -1029,22 +1028,6 @@ X_today = X_all.iloc[[-1]]
 # .iloc[[-1]] :마지막 행(오늘)
 # [[-1]] 대괄호 두개 : DataFrame 형태 유지
 
-# XGBoost모델학습
-
-# n_estimators=100 결정 트리100개 사용
-# randorm_state=42: 재현성(같은결과값나오게)
-# max_depth=3:트이깊이제한 (과지합방지)
-model=XGBClassifier(
-    n_estimators=100,
-    # 결정 트리 100개 사용
-    max_depth=3,
-    # 트리 깊이 3으로 제한
-    # 너무 깊으면 과적합 발생
-    random_state=42,
-    # 재현성 (항상 같은 결과)
-    eval_metric = 'mlogloss',
-    # 분류 모델 평가 방식
-)
 # AFI (Aggregated Feature Importance) + 양상블
 # 양상블 이란
 # - 여러 모델 동시 학습
@@ -1058,35 +1041,204 @@ model=XGBClassifier(
 
 from lightgbm import LGBMClassifier
 # LightGBM: 마이크로 소프트가 만든 모델
+# → XGBoost랑 같은 그래디언트 부스팅 계열
+# → 더 빠르고 메모리 효율
 from sklearn.ensemble import RandomForestClassifier
-shap_list=[]
-# 100번 SHAP 결과 저장할 빈 리스트
-for seed in range(100):
+# RandomForest: 결정 트리 여러 개 합치기
+# → 배깅(Bagging) 방식
+# → XGBoost/LightGBM과 다른 계열
+# → 다양한 관점에서 데이터 봄
+# sklearn: 파이썬 대표 머신러닝 라이브러리
+
+# @st.cache_data: 캐싱 (속도 해결)
+
+# 문제:
+# → 3모델 × 100번 = 300번 실행
+# → 새로고침할 때마다 300번 반복
+# → 매우 느림
+
+# 해결:
+# → @st.cache_data(ttl=3600)
+# → 처음 한 번만 계산
+# → 1시간(3600초) 동안 결과 저장
+# → 새로고침해도 저장된 결과 사용
+# → 다음날 되면 자동으로 새로 계산
+
+# ttl = Time To Live (살아있는 시간)
+# ttl=3600 = 3600초 = 1시간
+@st.cache_data(ttl=3600)
+def run_ensemble_afi(_X, _y, _X_today, _cols):
+    # 함수로 만든 이유:
+    # → @st.cache_data는 함수에만 붙일 수 있음
+    # → 함수로 감싸야 캐싱 가능
+
+    # 파라미터 앞에 _ 붙인 이유:
+    # → st.cache_data는 입력값을 해시(hash)해서
+    # → 같은 입력이면 저장된 결과 반환
+    # → DataFrame은 해시 못함 → 오류
+    # → _ 붙이면 해시 건너뜀 → 오류 방지
+
+    # _X: 학습 데이터 (252일)
+    # _y: 레이블 (상승/횡보/하락)
+    # _X_today: 오늘 데이터 (예측용)
+    # _cols: 지표 이름 목록 (19개)
+
+    shap_list=[]
+    # 100번 SHAP 결과 저장할 빈 리스트
+    # 나중에 평균 낼 것
+    for seed in range(100):
     # seed 0부터 99까지 100번 반복
     # 매번 다른 random_state 사용
-    model = XGBClassifier(
-        n_estimators = 100,
-        max_depth = 3,
-        learning_rate = 0.1 ,
-        eval_metric = 'mlogloss',
-        random_state = seed #매번 다를 시도
-    )
-    model.fit(X,y)
-    # 오늘 데이터 (마지막 행)
-    explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_today)
-    # 오늘 데이터 SHAP 계산
-    shap_abs = np.abs(
-        np.array(shap_values)
-    ).reshape(-1, len(indicator_cols_calc)).mean(axis=0)    # 57개를 (3, 19)로 모양 변경
-                                                            # 그 다음 3개 평균 → 19개
-    shap_list.append(shap_abs)
-    # 리스트에 추가
-shap_avg = np.mean(shap_list, axis = 0)
+    # → 같은 데이터도 조금씩 다르게 학습
+    # → 100번 평균 → 안정적인 가중치
+
+        # 1. XGBoost 학습 + SHAP
+        xgb_model = XGBClassifier(
+            n_estimators = 100,
+            # 결정 트리 100개 사용
+            # 많을수록 정확하지만 느림
+            max_depth = 3,
+            # 트리 깊이 3으로 제한
+            # 깊을수록 과적합 위험
+            # 3이 표준적인 값
+            learning_rate = 0.1 ,
+            # 학습률: 얼마나 빠르게 학습하냐
+            # 너무 크면 과적합
+            # 너무 작으면 학습 안 됨
+            # 0.1이 표준적인 값
+            eval_metric = 'mlogloss',
+            # 평가 방식: 다중 클래스 로그 손실
+            # mlogloss = multiclass log loss
+            # 3개 클래스 분류에 맞는 방식
+            random_state = seed #매번 다를 시도
+            # seed가 다르면 트리 구성이 조금씩 달라짐
+        )
+        xgb_model.fit(_X,_y) 
+        # _X: 252일 학습 데이터
+        # _y: 상승/횡보/하락 레이블
+        # 롤링 윈도우 적용 → look-ahead bias 없음
+
+        xgb_shap = shap.TreeExplainer(xgb_model).shap_values(_X_today)
+        # TreeExplainer: 트리 모델 전용 SHAP 계산기
+        # .shap_values(_X_today): 오늘 데이터 기여도 계산
+        # 결과: 3개 클래스 × 19개 지표 = 57개
+
+        xgb_abs = np.abs(
+            np.array(xgb_shap) 
+        # np.array: 리스트 → 배열로 변환
+        # np.abs: 절댓값 (음수 → 양수)
+        # 왜 절댓값이냐:
+        # → SHAP 음수 = 하락에 기여
+        # → SHAP 양수 = 상승에 기여
+        # → 방향 상관없이 크기만 봄
+        ).reshape(-1,len(_cols)).mean(axis=0)
+        # reshape(-1, 19):
+        # → 57개를 (3, 19) 형태로 변환
+        # → -1: 자동으로 행 개수 계산
+        # → 57 / 19 = 3행
+        # mean(axis=0):
+        # → 3개 클래스 방향으로 평균
+        # → (3, 19) → (19,)
+        # → 지표별 평균 중요도
+
+        # 2. LightGBM 학습 + SHAP
+
+        lgb_model = LGBMClassifier(
+            n_estimators=100,
+            max_depth=3,
+            learning_rate=0.1,
+            class_weight= 'balanced' , 
+            # class_weight='balanced':
+            # → 클래스 불균형 자동 처리
+            # 문제:
+            # → 횡보 > 상승 > 하락 순으로 많음
+            # → 모델이 항상 "횡보"로만 예측 가능
+            # 해결:
+            # → 적은 클래스에 가중치 더 줌
+            # → 상승/하락도 골고루 학습
+            # → 'balanced': 자동으로 계산해줌
+            random_state=seed,
+            verbose=-1
+        )
+        lgb_model.fit(_X, _y)
+
+        lgb_shap = shap.TreeExplainer(lgb_model).shap_values(_X_today)
+
+        lgb_abs = np.abs(
+            np.array(lgb_shap)
+        ).reshape(-1, len(_cols)).mean(axis=0)
+        # XGBoost랑 동일한 방식
+
+        # 3. RandomForest 학습 + SHAP
+
+        rf_model = RandomForestClassifier(
+            n_estimators = 100,
+            max_depth = 3,
+            class_weight = 'balanced' ,
+            # LightGBM이랑 같은 이유
+            random_state = seed
+        )
+        rf_model.fit(_X, _y)
+
+        rf_shap = shap.TreeExplainer(rf_model).shap_values(_X_today)
+
+        # RandomForest SHAP shape 방어 처리
+
+        # 왜 따로 처리하냐:
+        # → XGBoost, LightGBM: (3, 1, 19) 형태
+        # → RandomForest: (1, 19, 3) 형태일 수 있음
+        # → reshape(-1, 19) 하면 오류 가능
+        # → ndim으로 차원 확인 후 처리
+        rf_arr = np.array(rf_shap)
+        # np.array: 배열로 변환
+        # .ndim: 차원 수 확인
+        # ndim=3: 3차원 (우리가 원하는 것)
+        # ndim=2: 2차원 (다른 형태)
+
+        if rf_arr.ndim == 3:
+            # 3차원이면:
+            # → (3, 1, 19) 또는 (1, 19, 3)
+            # → reshape으로 통일
+            rf_abs = np.abs(rf_arr).reshape(-1,len(_cols)).mean(axis=0)
+        else:
+            # 2차원이면:
+            # → (1, 19) 형태
+            # → reshape으로 통일
+            rf_abs = np.abs(rf_arr).reshape(-1 ,len(_cols)).mean(axis=0)
+
+        # 4. 세 모델 평균
+        # 왜 단순 평균이냐:
+        # → 세 모델 각각 다른 방식으로 계산
+        # → 단순 평균이 제일 안정적
+        # → 동적 가중치는 과적합 위험
+        ensemble_abs = (xgb_abs + lgb_abs + rf_abs) / 3
+        # / 3: 3개 모델이니까 3으로 나누기
+
+        shap_list.append(ensemble_abs)
+        # 이번 seed 결과를 리스트에 추가
+
+    return np.mean(shap_list, axis=0)
+    # 100번 평균
+    # axis=0: 같은 지표끼리 평균
+    # → 최종 19개 안정적인 가중치 반환
+
+# 함수 실행
+
+shap_avg = run_ensemble_afi(X, y , X_today, indicator_cols_calc)
+# 처음 실행: 300번 계산 (느림)
+# 이후 실행: 캐시에서 바로 반환 (빠름)
+
 shap_today = pd.Series(
     shap_avg,
+    # 19개 평균 중요도 값
     index = indicator_cols_calc
+    # 지표 이름 붙이기
 ).sort_values(ascending = False)
+# 높은 순서로 정렬
+# ascending=False: 내림차순 (높은 것 먼저)
+
+
+
 #동적 가중치 계산
 # SHAP 절댓값을 가중치로 변환
 # 전체 합이 100이 되게 정규화
@@ -1136,7 +1288,7 @@ prompt = f"""
 모든것을 논리적으로 분석하며 항상 진실만을 말한는 전문가 입니다
 오늘 한국 공포탐욕지수는 {today_score:.1f}점입니다.
 
-11개 지표 현황:
+19개 지표 현황:
 -이동평균 괴리율: {df['MA20_gap_norm'].iloc[-1]:.1f}
 -거래량: {df['Volume_norm'].iloc[-1]:.1f}
 -변동성: {df['Volatility_norm'].iloc[-1]:.1f}
@@ -1148,6 +1300,7 @@ prompt = f"""
 -SP500: {df['SP500_norm'].iloc[-1]:.1f}
 -VIX: {df['VIX_norm'].iloc[-1]:.1f}
 -GOLD: {df['GOLD_norm'].iloc[-1]:.1f}
+
 
 위 데이터 바탕으로 현재시장의 상황을 3줄로 분석요약해주세요
 """
