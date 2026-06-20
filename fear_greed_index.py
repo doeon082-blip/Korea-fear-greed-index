@@ -273,10 +273,31 @@ im =ax.imshow(corr_matrix, cmap='RdYlGn', vmin=-1, vmax=1)
 # vmin=-1, vmax=1: 색깔 범위 고정
 
 # 축 레이블 설정
-ax.set_xticks(range(len(indicator_cols)))
-ax.set_yticks(range(len(indicator_cols)))
-ax.set_xticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI','S&P500','VIX','금'], rotation=45)
-ax.set_yticklabels(['MA괴리율', '거래량', '변동성', '모멘텀', '고저비율', '환율', '미국국채금리', 'RSI','S&P500','VIX','금'])
+labels = [
+    'MA괴리율',
+    '거래량',
+    '변동성',
+    '모멘텀',
+    '고저비율',
+    'RSI',
+    '환율',
+    '국채금리',
+    'SP500',
+    'VIX',
+    '금',
+    'VKOSPI',
+    '개인순매수',
+    '외국인순매수',
+    '기관순매수',
+    'PER',
+    'PBR',
+    '배당수익률',
+    '한도소진율'
+]
+ax.set_xticks(range(len(labels)))
+ax.set_yticks(range(len(labels)))
+ax.set_xticklabels(labels, rotation=45)
+ax.set_yticklabels(labels)
 
 # 각 칸에 숫자표시
 for i in range(len(indicator_cols)):
@@ -1300,7 +1321,14 @@ prompt = f"""
 -SP500: {df['SP500_norm'].iloc[-1]:.1f}
 -VIX: {df['VIX_norm'].iloc[-1]:.1f}
 -GOLD: {df['GOLD_norm'].iloc[-1]:.1f}
-
+-VKOSPI: {df['VKOSPI_norm'].iloc[-1]:.1f}
+-개인투자자 순매수: {df['RETAIL_norm'].iloc[-1]:.1f}
+-외국인 순매수: {df['FOREIGN_norm'].iloc[-1]:.1f}
+-기관 순매수: {df['INSTITUTION_norm'].iloc[-1]:.1f}
+-PER: {df['PER_norm'].iloc[-1]:.1f}
+-PBR: {df['PBR_norm'].iloc[-1]:.1f}
+-배당수익률: {df['DIV_norm'].iloc[-1]:.1f}
+-외국인 한도소진율: {df['FOREIGN_LIMIT_norm'].iloc[-1]:.1f}
 
 위 데이터 바탕으로 현재시장의 상황을 3줄로 분석요약해주세요
 """
