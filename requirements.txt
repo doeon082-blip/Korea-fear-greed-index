@@ -1,6 +1,13 @@
 streamlit
-finance-datareader
+FinanceDatareader
 pandas
-matplotlib
 ollama
 statsmodels
+numpy
+matplotlib
+python-dotenv
+feedparser
+shap
+scikit-learn
+xgboost
+lightgbm
