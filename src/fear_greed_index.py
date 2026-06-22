@@ -7,12 +7,12 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 # 로그 폴더 없으면 자동 생성
-os.makedirs("iogs",exist_ok = True)
+os.makedirs("logs",exist_ok = True)
 # 로그 설정
 logging.basicConfig(
     filename = "logs/app.log",
     level = logging.INFO,
-    format = "% (asctime)s %(levelname)s %(message)",
+    format = "% (asctime)s %(levelname)s %(message)s",
     encoding = "utf-8"
 )
 logging.info("앱 실행")
