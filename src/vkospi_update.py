@@ -16,6 +16,20 @@ from pykrx import stock
 # fgi 환경에만 설치됨
 import pandas as pd
 # pandas: 데이터 처리 라이브러리
+import logging
+import os
+# 로그 폴더 없으면 자동 생성
+os.makedirs("logs", exist_ok=True)
+
+# 로그 설정
+logging.basicConfig(
+    filename="logs/update.log",
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(message)s",
+    encoding="utf-8"
+)
+logging.info("=" * 40)
+logging.info("vkospi_update.py 시작")
 
 # VKOSPI 데이터 수집
 # "1005" = VKOSPI 티커 코드
@@ -49,13 +63,15 @@ df_retail.to_csv("retail_data.csv")
 # index=True 기본값
 # → 날짜 인덱스도 같이 저장
 print("개인 투자자 데이터 저장 완료")
+logging.info(f"retail_data.csv 저장완료: {len(df_retail)}개")
 print(f"데이터 기간:{df_retail.index[0]} ~ {df_retail.index[-1]}")
 print(f"총{len(df_retail)}개 데이터")
-# 외국인 순매수 데이터 저장
+# 외국인 순매수 데이터 저장=
 df_foreign = df_retail[['외국인']].copy()
 # .copy(): 원본 데이터 건드리지 않고 복사
 df_foreign.to_csv("foreign_data.csv")
 print("외국인 데이터 저장 완료")
+logging.info(f"foreign_data.csv 저장완료: {len(df_foreign)}개")
 # 기관 순매수 데이터 저장 (7개 합산)
 # 기관 구성:
 # → 금융투자: 증권사 자기매매
@@ -76,6 +92,7 @@ df_institution = df_institution.to_frame(name='기관')
 # name='기관': 컬럼 이름 설정
 df_institution.to_csv("institution_data.csv")
 print("기관 데이터 저장 완료")
+logging.info(f"institution_data.csv 저장완료: {len(df_institution)}개")
 # KOSPI 펀더멘털 데이터 저장
 # # PER: 주가수익비율
 # → 주가 / 주당순이익
@@ -109,8 +126,9 @@ df_fundamental = df_fundamental [['PBR' , 'PER' , '배당수익률']].copy()
 # CSV 저장
 # 하나의 파일에 3개 컬럼 저장
 # 읽을 때 컬럼 이름으로 각각 꺼냄
-df_fundamental.to_csv("fundamental_data,csv")
+df_fundamental.to_csv("fundamental_data.csv")
 print("펀더멘털 데이터 저장 완료")
+logging.info(f"fundamental_data.csv 저장완료: {len(df_fundamental)}개")
 print(f"데이터 기간 : {df_fundamental.index[0]} ~ {df_fundamental.index[-1]}")
 print(f"총{len(df_fundamental)}개 데이터")
 # 외국인 한도소진율 (섹터별 대표 종목 평균)
@@ -156,6 +174,7 @@ for sector, ticker in sector_tickers.items():
 df_foreign_limit = pd.concat(dfs, axis = 1).mean(axis = 1).to_frame(name='한도소진률')
 df_foreign_limit.to_csv("foreign_limit_data.csv")
 print("외국인 한도 소진률 저장 완료")
+logging.info(f"foreign_limit_data.csv 저장완료: {len(df_foreign_limit)}개")
 print(f"데이터 기간: {df_foreign_limit.index[0]} ~ {df_foreign_limit.index[-1]}")
 print(f"총{len(df_foreign_limit)}개 데이터")
 # CSV로 저장
@@ -167,5 +186,6 @@ df_vkospi.to_csv("vkospi_data.csv")
 # index=True 기본값
 # → 날짜 인덱스도 같이 저장
 print("vkospi 데이터 저장 완료")
+logging.info(f"vkospi_data.csv 저장완료: {len(df_vkospi)}개")
 print(f"데이터 기간: {df_vkospi.index[0]} ~ {df_vkospi.index[-1]}")
 print(f"총 {len(df_vkospi)}개 데이터 ")
