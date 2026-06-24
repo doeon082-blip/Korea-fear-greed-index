@@ -6,11 +6,18 @@ import FinanceDataReader as fdr
 import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+from config import (
+    DATA_DIR, LOG_DIR,
+    START_DATE, END_DATE,
+    MODEL_NAME, WINDOW,
+    CACHE_TTL, NEWS_COUNT,
+    AFI_SEEDS, LABEL_UP, LABEL_DOWN 
+)
 # 로그 폴더 없으면 자동 생성
-os.makedirs("logs",exist_ok = True)
+os.makedirs(LOG_DIR,exist_ok = True)
 # 로그 설정
 logging.basicConfig(
-    filename = "logs/app.log",
+    filename = f"{LOG_DIR}app.log",
     level = logging.INFO,
     format = "% (asctime)s %(levelname)s %(message)s",
     encoding = "utf-8"
@@ -20,47 +27,47 @@ logging.info("앱 실행")
 if platform.system() == 'Darwin':
     plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
-df = fdr.DataReader('KS11', '2020-01-01')
+df = fdr.DataReader('KS11', START_DATE)
 # 원달러 환율 데이터 불러오기
 # USD/KRW: 달러 대비 원화 환율
-df_usd = fdr.DataReader('USD/KRW', '2020-01-01')
+df_usd = fdr.DataReader('USD/KRW', START_DATE)
 # 환율 정규화
 # 환율 오르면 외국인 투자 감소 → 공포 신호
 # 그래서 역방향으로 정규화
-df_bond = fdr.DataReader('^TNX', '2020-01-01')
+df_bond = fdr.DataReader('^TNX', START_DATE)
 # S&P500 데이터 수집
 # 미국 시장이 한국보다 하루 먼저 움직임
 # 선행 지표로 활용
-df_sp500 = fdr.DataReader('^GSPC', '2020-01-01')
+df_sp500 = fdr.DataReader('^GSPC', START_DATE)
 # VIX 데이터 수집
 # 미국 공포지수
 # 글로벌 불안감 측정
-df_vix = fdr.DataReader('^VIX','2020-01-01')
+df_vix = fdr.DataReader('^VIX',START_DATE)
 # 금 가격
 # 안전자산 선호 지표
 # 불안할수록 금 가격 오름
-df_gold= fdr.DataReader('GC=F','2020-01-01')
+df_gold= fdr.DataReader('GC=F',START_DATE)
 # 외국인 순매수 CSV 읽기
 df_foreign = pd.read_csv(
-    "foreign_data.csv" ,
+    f"{DATA_DIR}foreign_data.csv" ,
     index_col = 0 ,
     parse_dates = True
 )
 # 기관 순매수 CSV 읽기
 df_institution= pd.read_csv(
-    "institution_data.csv" ,
+    f"{DATA_DIR}institution_data.csv" ,
     index_col = 0 ,
     parse_dates = True
 )
 # 펀더멘털 데이터 CSV 읽기
 df_fundamental = pd.read_csv (
-    "fundamental_data.csv" ,
+    f"{DATA_DIR}fundamental_data.csv" ,
     index_col = 0,
     parse_dates = True
 )
 # 외국인 한도소진율 CSV 읽기
 df_foreign_limit = pd.read_csv(
-    "foreign_limit_data.csv",
+    f"{DATA_DIR}foreign_limit_data.csv",
     index_col = 0 ,
     parse_dates = True
 )
@@ -70,14 +77,14 @@ df_foreign_limit = pd.read_csv(
 # → vkospi_update.py 에서 미리 저장한 CSV 읽기
 # → pykrx 없이 pandas만으로 가능
 df_retail = pd.read_csv(
-    "retail_data.csv",
+    f"{DATA_DIR}retail_data.csv",
     index_col = 0 ,
     parse_dates = True
 )
 # VKOSPI CSV 읽기
 # vkospi_update.py 실행하면 생성됨
 df_vkospi = pd.read_csv(
-    "vkospi_data.csv",
+    f"{DATA_DIR}vkospi_data.csv",
     index_col =0,   # 첫 번째 열을 인덱스로
     parse_dates= True  # 날짜 형식으로 변환 True가 문자열에서 날짜형식으로변한 False는 문자열 그대로 오류남
 )
@@ -103,7 +110,7 @@ plt.tight_layout()
 # 롤링 윈도우 정규화
 # 최근 252일(1년) 기준으로 정규화
 # 전역 정규화와 달리 과거 점수 변동 없음
-def normalize_rolling(series, window=252):
+def normalize_rolling(series, window=WINDOW):
     """
     series: 계산할 주식 지표 데이터 (환율, 변동성 등)
     window: 과거 몇 일 동안의 시장 체급을 기준으로 잡을 것인가? (252일 = 보통 1년 영업일)
@@ -133,8 +140,8 @@ df['Volatility'] = df['Return'].rolling(20).std()
 df['Volatility_norm'] = 100 - normalize_rolling(df['Volatility'])
 df['Momentum'] = df['Close'] / df['Close'].shift(20) - 1
 df['Momentum_norm'] = normalize_rolling(df['Momentum'])
-df['High_52w'] = df ['Close'].rolling(252).max()
-df['Low_52w'] = df['Close'].rolling(252).min()
+df['High_52w'] = df ['Close'].rolling(WINDOW).max()
+df['Low_52w'] = df['Close'].rolling(WINDOW).min()
 df['HL_ratio'] = (df['Close'] - df['Low_52w']) / (df['High_52w'] - df ['Low_52w']) * 100
 df['HL_norm'] = normalize_rolling(df['HL_ratio'])
 delta = df['Close'] .diff()
@@ -249,7 +256,7 @@ st.pyplot(fig)
 # 13개 지표가 서로 얼마나 관련있는지 확인
 
 
-# 13개 지표 컬럼만 모아서 새 데이터프레임 만들기
+# 19개 지표 컬럼만 모아서 새 데이터프레임 만들기
 indicator_cols  =[
     'MA20_gap_norm', # 이동 평균 괴리율
     'Volume_norm', # 거래량
@@ -261,7 +268,15 @@ indicator_cols  =[
     'BOND_norm',#미국 10년채 국채 금리
     'SP500_norm', #S&P500
     'VIX_norm', #VIX 지수
-    'GOLD_norm' # GOLD 안전자산
+    'GOLD_norm', # GOLD 안전자산
+    'VKOSPI_norm', # VKOSPI 지표 (한국판 VIX)
+    'RETAIL_norm', # 개인 투자자 순매수
+    'FOREIGN_norm', # 외국인 순매수
+    'INSTITUTION_norm', # 기관 투자자 순매수
+    'PBR_norm' , # KOSPI 전체 PBR
+    'PER_norm' , # KOSPI 전체 PSR
+    'DIV_norm' , # 배당수익률
+    'FOREIGN_LIMIT_norm' # 외국인 한도 소진율
 ]
 
 # 상관관계 계산
@@ -588,7 +603,7 @@ for lag in range(1, 21):
 import feedparser #feedparser:RSS 피드읽는 라이브러리
 
 # 1시간 캐싱 추가
-@st.cache_data(ttl=3600)
+@st.cache_data(ttl=CACHE_TTL)
 def get_news_sentiment():
     try:
         # 바깥쪽 try
@@ -609,7 +624,7 @@ def get_news_sentiment():
         # [:20]: 최신 30개만 (오래된 건 필요없음)
         # entry.title: 뉴스 제목만 (본문 X)
         news_titles = []
-        for entry in feed.entries[:20]:
+        for entry in feed.entries[:NEWS_COUNT]:
             news_titles.append(entry.title)
 
         # 뉴스가 하나도 없으면 기본값 반환
@@ -643,7 +658,7 @@ def get_news_sentiment():
             import ollama
             
             response1 = ollama.chat(
-                model='qwen2.5:14b',
+                model=MODEL_NAME,
                 options ={
                     'num_predict': 4096 # 출력 길게 하기
                 },
@@ -694,7 +709,7 @@ def get_news_sentiment():
                 ]
             )
             response2 = ollama.chat(
-                model = 'qwen2.5:14b',
+                model = MODEL_NAME,
                 options ={
                     'num_predict' : 4096
                 },
@@ -1024,8 +1039,8 @@ next_return = df['Return'].shift(-1)
 # 조건 정의
 # conditions: 조건 목록
 conditions = [
-    next_return > 0.005, # +0.5% 초과 = 상승
-    next_return < -0.005 
+    next_return > LABEL_UP, # +0.5% 초과 = 상승
+    next_return < LABEL_DOWN
 ]
 choices = [2,0]
 # 2 = 상승
@@ -1052,10 +1067,10 @@ y_all=df['label'].reindex(X_all.index).dropna()
 X_all=X_all.reindex(y_all.index)
 # 오늘 기준 과거 252일만 슬라이싱
 # iloc[-252:] 마지막 252행 (최근 1년)
-X=X_all.iloc[-252:]
+X=X_all.iloc[-WINDOW:]
 #iloc[-252:]:마지막 252개
 # 왜 252냐면 : 1년 영업일 기준
-y=y_all.iloc[-252:]
+y=y_all.iloc[-WINDOW:]
 # 오늘 데이터는 전터에서 가져오기
 # 왜냐면: 오늘 데이터로 예기해야 하니깐
 X_today = X_all.iloc[[-1]]
@@ -1092,15 +1107,15 @@ from sklearn.ensemble import RandomForestClassifier
 # → 매우 느림
 
 # 해결:
-# → @st.cache_data(ttl=3600)
+# → @st.cache_data(ttl=CACHE_TTL)
 # → 처음 한 번만 계산
-# → 1시간(3600초) 동안 결과 저장
+# → 1시간(CACHE_TTL초) 동안 결과 저장
 # → 새로고침해도 저장된 결과 사용
 # → 다음날 되면 자동으로 새로 계산
 
 # ttl = Time To Live (살아있는 시간)
-# ttl=3600 = 3600초 = 1시간
-@st.cache_data(ttl=3600)
+# ttl=CACHE_TTL = CACHE_TTL초 = 1시간
+@st.cache_data(ttl=CACHE_TTL)
 def run_ensemble_afi(_X, _y, _X_today, _cols):
     # 함수로 만든 이유:
     # → @st.cache_data는 함수에만 붙일 수 있음
@@ -1120,7 +1135,7 @@ def run_ensemble_afi(_X, _y, _X_today, _cols):
     shap_list=[]
     # 100번 SHAP 결과 저장할 빈 리스트
     # 나중에 평균 낼 것
-    for seed in range(100):
+    for seed in range(AFI_SEEDS):
     # seed 0부터 99까지 100번 반복
     # 매번 다른 random_state 사용
     # → 같은 데이터도 조금씩 다르게 학습
@@ -1364,7 +1379,7 @@ try:
     with st.spinner("AI가 분석중..."):
         #st.spinner: 로딩 중 표시
         response = ollama.chat(
-            model="qwen2.5:14b",
+            model= MODEL_NAME,
             messages=[{"role": "user", "content": prompt}]
         )
         # 응답 텍스트 추출해서 웹화면에 표시
