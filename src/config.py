@@ -1,3 +1,10 @@
+import os 
+from dotenv import load_dotenv
+
+load_dotenv() # .env 파일읽기
+
+NAVER_CLIENT_ID= os.getenv("NAVER_CLIENT_ID")
+NAVER_CLIENT_SECRET = os.getenv("NAVER_CLIENT_SECRET")
 # 경로 설정
 DATA_DIR = "data/"
 LOG_DIR = "logs/"
