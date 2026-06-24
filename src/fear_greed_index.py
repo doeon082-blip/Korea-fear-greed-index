@@ -11,7 +11,7 @@ from config import (
     START_DATE, END_DATE,
     MODEL_NAME, WINDOW,
     CACHE_TTL, NEWS_COUNT,
-    AFI_SEEDS, LABEL_UP, LABEL_DOWN 
+    AFI_SEEDS
 )
 # 로그 폴더 없으면 자동 생성
 os.makedirs(LOG_DIR,exist_ok = True)
@@ -1035,12 +1035,17 @@ import numpy as np
 # 오늘 지표로 내일 방향 예측하려고
 # 내일 수익률을 오늘 행에 붙여넣는 것
 next_return = df['Return'].shift(-1)
+# Dynamic labeling
+# 최근 252일 변동성 기준으로 임계값 자동 계산
+volatility = df['Return'].rolling(WINDOW).std()
+# 변동성의 0.5배를 임계값으로 사용
+# 변동성 높으면 임계값 커짐 → 기준 엄격해짐
+# 변동성 낮으면 임계값 작아짐 → 기준 완화됨
+dynamic_threshold = volatility * 0.5
 
-# 조건 정의
-# conditions: 조건 목록
 conditions = [
-    next_return > LABEL_UP, # +0.5% 초과 = 상승
-    next_return < LABEL_DOWN
+    next_return > dynamic_threshold, # 변동성 기준 상승
+    next_return < -dynamic_threshold # 변동성 기준 하락
 ]
 choices = [2,0]
 # 2 = 상승
