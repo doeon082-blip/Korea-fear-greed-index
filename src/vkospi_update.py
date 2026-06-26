@@ -190,3 +190,4 @@ print("vkospi 데이터 저장 완료")
 logging.info(f"vkospi_data.csv 저장완료: {len(df_vkospi)}개")
 print(f"데이터 기간: {df_vkospi.index[0]} ~ {df_vkospi.index[-1]}")
 print(f"총 {len(df_vkospi)}개 데이터 ")
+

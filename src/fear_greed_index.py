@@ -1393,3 +1393,16 @@ try:
 except:
     st.info("AI 시장분석은 로컬 환경에서만 작동됩니다.")
 
+# Walk-forward 검증 결과 표시
+st.markdown("---")
+st.subheader("📈 Walk-forward 검증 결과")
+st.write("모델 과거 데이터가 얼마나 정확했는지 검정")
+
+try:
+    df_wf = pd.read_csv(f"{DATA_DIR}walk_forward_results.csv")
+    avg_acc = df_wf['전체정확도'].mean()
+    st.write(f"평균정확도: {avg_acc:.1f}%")
+    st.write(F"검증 구간 수 : {len(df_wf)}개")
+    st.dataframe(df_wf)
+except:
+    st.info("walk_forward.py 를 먼저 실행해 주세요")
