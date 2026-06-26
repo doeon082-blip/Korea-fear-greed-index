@@ -13,6 +13,7 @@ from config import (
     CACHE_TTL, NEWS_COUNT,
     AFI_SEEDS
 )
+from indicators import make_labels
 # 로그 폴더 없으면 자동 생성
 os.makedirs(LOG_DIR,exist_ok = True)
 # 로그 설정
@@ -1025,36 +1026,20 @@ import numpy as np
 # numpy: 수학 계산 라이브러리
 # np.select: 조건에 따라 값 선택할 때 사용
 
-# 레이블 생성
-# 다음날 수익률 기준으로 3가지 분류
-# +0.5% 초과 → 1 (상승)
-# -0.5% 미만 → -1 (하락)
-# 그 사이  → 0 (횡보)
-#
-# .shift(-1): 하루 앞당기기
-# 오늘 지표로 내일 방향 예측하려고
-# 내일 수익률을 오늘 행에 붙여넣는 것
-next_return = df['Return'].shift(-1)
-# Dynamic labeling
-# 최근 252일 변동성 기준으로 임계값 자동 계산
-volatility = df['Return'].rolling(WINDOW).std()
-# 변동성의 0.5배를 임계값으로 사용
-# 변동성 높으면 임계값 커짐 → 기준 엄격해짐
-# 변동성 낮으면 임계값 작아짐 → 기준 완화됨
-dynamic_threshold = volatility * 0.5
+# indicators.py 의 make_labels 함수로 라벨 3개 생성
+# horizon = 예측 기간 (며칠 후를 예측할지)
+df = make_labels(df, horizon=1)
+# → df['label_1d'] 컬럼 생성
+# → 내일 방향 예측용
 
-conditions = [
-    next_return > dynamic_threshold, # 변동성 기준 상승
-    next_return < -dynamic_threshold # 변동성 기준 하락
-]
-choices = [2,0]
-# 2 = 상승
-# 1 = 횡보
-# 0 = 하락
+df = make_labels(df, horizon = 5)
+# → df['label_5d'] 컬럼 생성
+# → 5일 후 방향 예측용
 
-# np.select: 조건에 맞는 값 선택
-# default=0: 위 조건 둘 다 아니면 0 (횡보)
-df['label'] = np.select(conditions, choices, default=1)
+df = make_labels(df, horizon =20)
+# → df['label_20d'] 컬럼 생성
+# → 20일 후 방향 예측용
+
 
 # 롤링 학습데이터 준비
 # 바꾸는 이유
@@ -1068,14 +1053,17 @@ df['label'] = np.select(conditions, choices, default=1)
 
 # 전체 데이터 준비
 X_all=df[indicator_cols_calc].dropna()
-y_all=df['label'].reindex(X_all.index).dropna()
-X_all=X_all.reindex(y_all.index)
-# 오늘 기준 과거 252일만 슬라이싱
-# iloc[-252:] 마지막 252행 (최근 1년)
-X=X_all.iloc[-WINDOW:]
+y_all_1d=df['label_1d'].reindex(X_all.index).dropna()
+y_all_5d = df['label_5d'].reindex(X_all.index).dropna()
+y_all_20d = df['label_20d'].reindex(X_all.index).dropna()
+X_all_1d=X_all.reindex(y_all_1d.index).iloc[-WINDOW:]
+X_all_5d = X_all.reindex(y_all_5d.index).iloc[-WINDOW:]
+X_all_20d = X_all.reindex(y_all_20d.index).iloc[-WINDOW:]
 #iloc[-252:]:마지막 252개
 # 왜 252냐면 : 1년 영업일 기준
-y=y_all.iloc[-WINDOW:]
+y_1d=y_all_1d.iloc[-WINDOW:]
+y_5d = y_all_5d.iloc[-WINDOW:]
+y_20d = y_all_20d.iloc[-WINDOW:]
 # 오늘 데이터는 전터에서 가져오기
 # 왜냐면: 오늘 데이터로 예기해야 하니깐
 X_today = X_all.iloc[[-1]]
@@ -1121,10 +1109,14 @@ from sklearn.ensemble import RandomForestClassifier
 # ttl = Time To Live (살아있는 시간)
 # ttl=CACHE_TTL = CACHE_TTL초 = 1시간
 @st.cache_data(ttl=CACHE_TTL)
-def run_ensemble_afi(_X, _y, _X_today, _cols):
+def run_ensemble_afi(_X, _y, _X_today, _cols, horizon):
     # 함수로 만든 이유:
     # → @st.cache_data는 함수에만 붙일 수 있음
     # → 함수로 감싸야 캐싱 가능
+    # horizon 은 캐시 구분용
+    # 1, 5, 20 값이 다르면 각각 다른 캐시로 저장됨
+    # 함수 내부에서 실제로 쓰지 않음 → 비활성화 경고 정상
+    
 
     # 파라미터 앞에 _ 붙인 이유:
     # → st.cache_data는 입력값을 해시(hash)해서
@@ -1278,16 +1270,27 @@ def run_ensemble_afi(_X, _y, _X_today, _cols):
 
 # 함수 실행
 
-shap_avg = run_ensemble_afi(X, y , X_today, indicator_cols_calc)
+shap_avg_1d = run_ensemble_afi(X_all_1d, y_1d, X_today, indicator_cols_calc, horizon=1)
+shap_avg_5d = run_ensemble_afi(X_all_5d, y_5d, X_today, indicator_cols_calc, horizon=5)
+shap_avg_20d = run_ensemble_afi(X_all_20d, y_20d, X_today, indicator_cols_calc, horizon=20)
 # 처음 실행: 300번 계산 (느림)
 # 이후 실행: 캐시에서 바로 반환 (빠름)
 
-shap_today = pd.Series(
-    shap_avg,
-    # 19개 평균 중요도 값
-    index = indicator_cols_calc
-    # 지표 이름 붙이기
-).sort_values(ascending = False)
+# 1일 후 SHAP 중요도
+shap_today_1d = pd.Series(
+    shap_avg_1d,
+    index=indicator_cols_calc
+).sort_values(ascending=False)
+# 5일 후 SHAP 중요도
+shap_today_5d = pd.Series(
+    shap_avg_5d,
+    index=indicator_cols_calc
+).sort_values(ascending=False)
+# 20일 후 SHAP 중요도
+shap_today_20d = pd.Series(
+    shap_avg_20d,
+    index=indicator_cols_calc
+).sort_values(ascending=False)
 # 높은 순서로 정렬
 # ascending=False: 내림차순 (높은 것 먼저)
 
@@ -1296,7 +1299,9 @@ shap_today = pd.Series(
 #동적 가중치 계산
 # SHAP 절댓값을 가중치로 변환
 # 전체 합이 100이 되게 정규화
-dynamic_weights = shap_today / shap_today.sum() * 100
+dynamic_weights_1d = shap_today_1d / shap_today_1d.sum() * 100
+dynamic_weights_5d = shap_today_5d / shap_today_5d.sum() * 100
+dynamic_weights_20d = shap_today_20d / shap_today_20d.sum() * 100
 
 
 # 동적 가중치로 새 공포탐욕지수 계산
@@ -1306,32 +1311,55 @@ valid_cols = [col for col in indicator_cols_calc
                if not pd.isna(df[col].iloc[-1])]
 
 # NaN 없는 지표 가중치만 추출
-valid_weights = dynamic_weights[valid_cols]
-
+valid_weights_1d = dynamic_weights_1d[valid_cols]
 # 가중치 합이 100되게 재정규화
-valid_weights = valid_weights / valid_weights.sum() * 100
-
+valid_weights_1d = valid_weights_1d / valid_weights_1d.sum() * 100
+valid_weights_5d = dynamic_weights_5d[valid_cols]
+valid_weights_5d = valid_weights_5d / valid_weights_5d.sum() * 100
+valid_weights_20d = dynamic_weights_20d[valid_cols]
+valid_weights_20d = valid_weights_20d / valid_weights_20d.sum() * 100
 # 유효한 지표만으로 오늘 지수 계산
-today_dynamic = sum(
-    df[col].iloc[-1] * (valid_weights[col] / 100)
+# valid_weights = NaN 없는 지표만 가중치 적용
+# 각 horizon 별로 따로 계산
+
+# 1일 후 동적 가중치 지수
+today_dynamic_1d = sum(
+    df[col].iloc[-1] * (valid_weights_1d[col] / 100)
     for col in valid_cols
 )
+
+# 5일 후 동적 가중치 지수
+today_dynamic_5d = sum(
+    df[col].iloc[-1] * (valid_weights_5d[col] / 100)
+    for col in valid_cols
+)
+
+# 20일 후 동적 가중치 지수
+today_dynamic_20d = sum(
+    df[col].iloc[-1] * (valid_weights_20d[col] / 100)
+    for col in valid_cols
+)
+
 # 결과 출력
 st.markdown('---')
 st.write("오늘 AI 분석 결과")
 st.write(f"기존지수 (동일 가중치): {today_score:.1f}점")
-st.write(f"AI 동적 가중치 지수: {today_dynamic:.1f}점")
+# 3가지 horizon 예측 결과 표시
+st.write(f"1일 후 예측 지수: {today_dynamic_1d:.1f}점")
+st.write(f"5일 후 예측 지수: {today_dynamic_5d:.1f}점")
+st.write(f"20일 후 예측 지수: {today_dynamic_20d:.1f}점")
 
-st.write(" 오늘 가장 중요한 지표 top 3:")
-for i, (idx, val) in enumerate(shap_today.head(5).items()):
-    weight = dynamic_weights[idx]
-    st.write(f"{i+1}위: {idx}  →  기여도: {weight:.1f}%")
+# 1일 기준 중요 지표 top 5
+st.write("오늘 가장 중요한 지표 top 5 (1일 기준):")
+for i, (idx, val) in enumerate(shap_today_1d.head(5).items()):
+    weight = dynamic_weights_1d[idx]
+    st.write(f"{i+1}위: {idx} → 기여도: {weight:.1f}%")
 
-
-st.write(" 중요도 낮은 지표:")
-for idx, val in shap_today.tail(5).items():
-    st.write(f"{idx}: {dynamic_weights[idx]:.1f}%")
-
+# 1일 기준 중요도 낮은 지표
+st.write("중요도 낮은 지표 (1일 기준):")
+for idx, val in shap_today_1d.tail(5).items():
+    st.write(f"{idx}: {dynamic_weights_1d[idx]:.1f}%")
+    
 # llm시장 분석 코멘트 생성
 # ollama의 qwen2.5:14b 모델 사용
 
