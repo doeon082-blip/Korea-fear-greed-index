@@ -13,7 +13,7 @@ from config import (
     CACHE_TTL, NEWS_COUNT,
     AFI_SEEDS
 )
-from indicators import make_labels
+from indicators import calculate_indicators, make_labels
 # 로그 폴더 없으면 자동 생성
 os.makedirs(LOG_DIR,exist_ok = True)
 # 로그 설정
@@ -89,11 +89,6 @@ df_vkospi = pd.read_csv(
     index_col =0,   # 첫 번째 열을 인덱스로
     parse_dates= True  # 날짜 형식으로 변환 True가 문자열에서 날짜형식으로변한 False는 문자열 그대로 오류남
 )
-df['MA20'] =df ['Close'].rolling(20).mean()
-df['MA60'] =df['Close'].rolling(60).mean()
-df['MA120'] =df['Close'].rolling(120).mean()
-df['MA240'] =df['Close'].rolling(240).mean()
-df['MA20_gap'] =(df['Close'] - df['MA20']) / df['MA20'] * 100
 fig,  (ax1, ax2) = plt.subplots(2, 1, figsize=(12,8))
 ax1.plot(df.index, df['Close'], label='KOSPI')
 ax1.plot(df.index, df['MA20'], label ='20일 이동평균')
@@ -106,138 +101,14 @@ ax2.bar(df.index, df['Volume'], label='거래량')
 ax2.set_title('거래량')
 ax2.legend()
 plt.tight_layout()
-
-
-# 롤링 윈도우 정규화
-# 최근 252일(1년) 기준으로 정규화
-# 전역 정규화와 달리 과거 점수 변동 없음
-def normalize_rolling(series, window=WINDOW):
-    """
-    series: 계산할 주식 지표 데이터 (환율, 변동성 등)
-    window: 과거 몇 일 동안의 시장 체급을 기준으로 잡을 것인가? (252일 = 보통 1년 영업일)
-    """
-        # 1. [롤링 윈도우] 매일 아침 기준으로 '최근 1년 창문'을 열어서 그 안의 최솟값, 최댓값을 찾습니다.
-        # 이렇게 하면 미래의 데이터를 미리 훔쳐보는 오류(치팅)를 완벽하게 차단합니다.
-    rolling_min = series.rolling(window).min()
-    rolling_max = series.rolling(window).max()
-        # 2. [0~100 점수 환산] 최근 1년 체급 안에서 오늘의 위치를 점수(0~100)로 보정합니다.
-         # 💡 1e-8을 더하는 이유: 분모가 0이 되어 프로그램이 튕기는 현상(에러)을 컴퓨터 공학적으로 막아주는 안전장치입니다.
-    result = (series -rolling_min) / (rolling_max - rolling_min+ 1e-8) * 100
-
-        # 3. [초기 NaN 데이터 구제] 프로그램 시작 후 첫 1년(251일째까지)은 '과거 1년 데이터'가 없어서 빈 칸(NaN)이 됩니다.
-        # 빈 칸이 있으면 뒤쪽 계산에서 에러가 나기 때문에, 이 초반 구간만 전체 기간 기준으로 점수를 매겨서 채워줍니다(fillna).
-    global_min = series.min()
-    global_max = series.max()
-    global_norm = (series -global_min) / (global_max -global_min +1e-8) * 100
-
-         # 4. [최종 출력] 클로드 코드와 달리, 이제 진짜 롤링 계산된 결과물이 밖으로 튀어나갑니다!
-    return result.fillna(global_norm)
-    
-df['MA20_gap_norm'] = normalize_rolling(df ['MA20_gap'])
-df['Volume_change'] = df['Volume'].pct_change()
-df['Volume_norm'] = normalize_rolling(df['Volume_change'].dropna()).reindex(df.index)
-df['Return'] = df['Close'].pct_change()
-df['Volatility'] = df['Return'].rolling(20).std()
-df['Volatility_norm'] = 100 - normalize_rolling(df['Volatility'])
-df['Momentum'] = df['Close'] / df['Close'].shift(20) - 1
-df['Momentum_norm'] = normalize_rolling(df['Momentum'])
-df['High_52w'] = df ['Close'].rolling(WINDOW).max()
-df['Low_52w'] = df['Close'].rolling(WINDOW).min()
-df['HL_ratio'] = (df['Close'] - df['Low_52w']) / (df['High_52w'] - df ['Low_52w']) * 100
-df['HL_norm'] = normalize_rolling(df['HL_ratio'])
-delta = df['Close'] .diff()
-gain =delta.clip(lower=0)
-loss = (-delta). clip(lower=0)
-avg_gain = gain.rolling(14).mean()
-avg_loss = loss.rolling(14).mean()
-rs = avg_gain / avg_loss
-df['RSI'] = 100 - (100 / (1 + rs))
-df['RSI_norm'] = normalize_rolling(df['RSI'])
-df['USD_KRW'] = df_usd['Close'].reindex(df.index)
-df['USD_norm'] = 100 - normalize_rolling(df['USD_KRW'])
-df['BOND'] = df_bond['Close'].reindex(df.index)
-df['BOND_norm'] =100 - normalize_rolling(df['BOND'])
-# S&P500 전일 수익률
-# 미국 시장이 한국보다 하루 먼저 움직임
-# 미국이 오늘 올랐으면 한국은 내일 오를 가능성
-# .shift(1): 하루 전 데이터로 맞추기
-df['SP500'] = df_sp500['Close'].reindex(df.index)
-df['SP500_return'] = df['SP500'].pct_change()
-# 수익률이 높을수록 탐욕신호
-df['SP500_norm'] = normalize_rolling(df['SP500_return'].shift(1))
-# VIX (미국 공포지수)
-# VIX 높으면 글로벌 공포 → 한국도 하락
-# 역방향: VIX 높으면 공포탐욕지수 낮춰야 함
-df['VIX'] = df_vix['Close'].reindex(df.index)
-df['VIX_norm'] = 100 - normalize_rolling(df['VIX'])
-# 금 가격
-# 금 오르면 안전자산 선호 → 주식 공포
-# 역방향 정규화
-df['GOLD'] = df_gold['Close'].reindex(df.index)
-df['GOLD_norm'] = 100 - normalize_rolling(df['GOLD'])
-# PBR 정규화
-# PBR: 주가순자산비율
-# → PER이랑 같은 방식
-# → 방향성은 XGBoost + SHAP이 판단
-df['PBR'] = df_fundamental['PBR'].reindex(df.index)
-# .reindex(): KOSPI 날짜 기준으로 맞추기
-# → 공휴일 등 날짜 불일치 해결
-df['PBR_norm']= normalize_rolling(df['PBR'])
-# PER 정규화
-# PER: 주가수익비율
-# → KOSPI 전체 밸류에이션 지표
-# → 방향성은 XGBoost + SHAP이 판단
-df['PER'] = df_fundamental['PER'].reindex(df.index)
-df['PER_norm'] = normalize_rolling(df['PER'])
-# 배당수익률 정규화
-# 배당수익률: 배당금 / 주가
-# → 높으면 안전자산 선호
-# → 방향성은 XGBoost + SHAP이 판단
-df['DIV'] = df_fundamental['배당수익률'].reindex(df.index)
-df['DIV_norm'] = normalize_rolling(df['DIV'])
-# 개인투자자 순매수 정규화
-# 개인 순매수 = 개인 매수 - 개인 매도
-# 높을수록 개인이 많이 삼 = 탐욕 신호
-# 낮을수록 개인이 많이 팜 = 공포 신호
-df['RETAIL'] = df_retail['개인'].reindex(df.index)
-df['RETAIL_norm'] = normalize_rolling(df['RETAIL']) 
-# VKOSPI 정규화
-# 한국판 VIX
-# 높을수록 시장 불안 = 공포 신호
-# 역방향 정규화
-# → VIX_norm 랑 같은 방식
-df['VKOSPI'] = df_vkospi['종가'].reindex(df.index)
-df['VKOSPI_norm']= 100 - normalize_rolling(df['VKOSPI'])
-# 외국인 순매수 정규화
-df['FOREIGN'] = df_foreign['외국인'].reindex(df.index)
-df['FOREIGN_norm'] = normalize_rolling(df['FOREIGN'])
-# 기관 순매수 정규화
-df['INSTITUTION'] = df_institution['기관'].reindex(df.index)
-df['INSTITUTION_norm'] = normalize_rolling(df['INSTITUTION'])
-# 외국인 한도소진율 정규화
-df['FOREIGN_LIMIT'] = df_foreign_limit['한도소진률'].reindex(df.index)
-df['FOREIGN_LIMIT_norm'] = normalize_rolling(df['FOREIGN_LIMIT'])
-indicator_cols_calc = [
-    'MA20_gap_norm',# 이동평균 괴리율 (앵커링 효과)
-    'Volume_norm', # 거래량 (군중심리)
-    'Volatility_norm', # 변동성 (과잉반응)
-    'Momentum_norm', # 모멘텀 (추세 추종)
-    'HL_norm', # 52주 고저비율 (준거점 효과) 
-    'RSI_norm',   # RSI (과매수/과매도) 
-    'USD_norm',# 원달러 환율 (외부충격)
-    'BOND_norm',  # 미국 국채금리 (안전자산)
-    'SP500_norm', #s&p500 수익률(선행지표)
-    'VIX_norm', # VIX(글로벌 공포)
-    'GOLD_norm', # 금 가격(안전 자산 선호)
-    'VKOSPI_norm', # vkospi( 한국형 탐욕지수)
-    'RETAIL_norm', # 개인투자자 순매수(동학개미))
-    'FOREIGN_norm', #외국인 순매수
-    'INSTITUTION_norm' , # 기관 순매수
-    'PER_norm' , # KOSPI 전체 PER
-    'PBR_norm' , # KOSPI 전체 PBR
-    'DIV_norm' ,  # KOSPI 전체 배당수익률
-    'FOREIGN_LIMIT_norm' # 외국인 한도소진율
-]
+# indicators.py 의 calculate_indicators 로
+# 19개 지표 한 번에 계산
+# 두 파일 중복 제거 완료
+df, indicator_cols_calc = calculate_indicators(
+    df, df_usd, df_bond , df_sp500, df_vix, df_gold,
+    df_foreign, df_institution, df_fundamental,
+    df_foreign_limit, df_retail, df_vkospi
+)
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
 st.write(f"\n오늘 공포탐욕지수: {today_score:.1f}")
