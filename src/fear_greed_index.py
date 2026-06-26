@@ -20,7 +20,7 @@ os.makedirs(LOG_DIR,exist_ok = True)
 logging.basicConfig(
     filename = f"{LOG_DIR}app.log",
     level = logging.INFO,
-    format = "% (asctime)s %(levelname)s %(message)s",
+    format = "%(asctime)s %(levelname)s %(message)s",
     encoding = "utf-8"
 )
 logging.info("앱 실행")
@@ -462,9 +462,9 @@ for lag in range(1, 21):
 # 1. 본문은 너무 길어서 LLM 속도 느려짐
 # 2. 저작권 문제 (본문 저장하면 안 됨)
 # 3. 제목만 봐도 감성 판단 충분
-# 왜 30개냐:
+# 왜 20개냐:
 # 10개는 대표성 부족
-# 30개면 오늘 시장 전반적 분위기 파악 가능
+# 20개면 오늘 시장 전반적 분위기 파악 가능
 # 반환값:
 # overall_score: 전체 감성 점수 (0~100)
 # news_list: 뉴스별 분석 결과 리스트
