@@ -1,4 +1,5 @@
 import os 
+from datetime import datetime
 from dotenv import load_dotenv
 
 load_dotenv() # .env 파일읽기
@@ -11,7 +12,7 @@ LOG_DIR = "logs/"
 
 # 데이터 수집 기간
 START_DATE = "20180101"
-END_DATE = "20261231"
+END_DATE = datetime.today().strftime('%Y%m%d')
 START_DATE_TRADING = "20180102"  
 
 # 모델 설정
