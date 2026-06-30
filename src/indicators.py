@@ -123,34 +123,37 @@ def calculate_indicators(df, df_usd, df_bond, df_sp500, df_vix, df_gold,
 
 def make_labels(df, horizon=1):
     """
-    Dynamic labeling
+    Financial ML 표쥰 Dynamic labeling
     
-    horizon: 예측기간
-    1 = 내일 방향 예측 (단기)
-    5 = 1주일후 방향 예측 (중기)
-    20 = 1개월 후 방향 예측 (장기)
-    
-    반환:
-    df 에 label_{horizon}d 컬럼 추가
-    예 : horizon=5 label_5d 컬럼
+    [수정이유]
+    기존:df['Return'].shift(-horizon)
+    horizon=5 이면 5일뒤 하루 수익률
+    완전한 랜덤 노이즈 - 예측불가
+
+    수정:df['Close'].pct_change(horizon).shift(-horizon)
+    horizon=5 이면 5일 누적 수익률
+    의미있는 신호 예측가능
+
+    변동성 기간에 맞게 스케일링:
+    기존:volatility*0.5(1일 기준 고정)
+    수정: volatlity * sqrt(horizon) * 0.5
+    → 5일 예측이면 기준도 5일치로
     """
-    # 최근 252일 변동성 계산
-    # 변동성 = 수익률의 표준편차
-    # 높을수록 시장이 불안정
-    volatility = df['Return'].rolling(WINDOW).std()
-    # 동적 임계값 계산
-    # 변동성 높으면 기준도 높게 → 엄격하게 상승/하락 판단
-    # 변동성 낮으면 기준도 낮게 → 작은 움직임도 상승/하락으로 판단
+    # 누적 수익률 계산
+    # pct_change(horizon): horizon 일 누적 수익률
+    # shift(-horizon): 오늘 행에 미래값 붙이기
+    cumulative_return = df['Close'].pct_change(horizon).shift(-horizon)
+    
+    # 변동성 임계값 스케일링
+    # np.sqrt(horizon): 시간의 제곱근 법칙 (금융 수학 표준)
+    # 1일 변동성 1% → 5일 기준 = 1% * sqrt(5) = 2. 24%
+    volatility = df['Return'].rolling(WINDOW).std() * np.sqrt(horizon)
     dynamic_threshold = volatility * 0.5
-    # horizon 일 후 수익률
-    # shift(-1) = 내일 수익률을 오늘 행에 가져오기
-    # shift(-5) = 5일 후 수익률을 오늘 행에 가져오기
-    next_return = df['Return'].shift(-horizon)
-    # 조건 정의
+    
     conditions = [
-        next_return > dynamic_threshold, # 임계값 초과 = 상승 (2)
-        next_return < -dynamic_threshold # 임계값 미만 = 하락 (0)
-    ]
+        cumulative_return > dynamic_threshold, #누적 상숭
+        cumulative_return < -dynamic_threshold #누적 하락
+    ] 
     # 둘 다 아니면 횡보 (1)
     
     # label_{horizon}d 컬럼 생성
