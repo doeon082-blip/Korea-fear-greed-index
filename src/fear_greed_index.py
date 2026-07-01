@@ -431,11 +431,20 @@ df_granger = df[[
 # df_granger[['Return', 'Fear_Greed_diff']]:
 # → 4개 컬럼 중 2개만 선택해서 검정
 # → "Fear_Greed_diff가 Return을 예측하나?" 검정
-results = grangercausalitytests(
-    df_granger[['Return', 'Fear_Greed_diff']],
-    maxlag=20, #최대 20일후까지 영향 검정
-    verbose=False #터미널 출력끄기
-)
+@st.cache_data(ttl=CACHE_TTL)
+def run_granger(_df_granger):
+    """
+    Granger 인과검정 캐싱
+    무거운 통계 계산이라 매번 실행하면 느림
+    CACHE_TTL(1시간) 동안 결과 재사용
+    """
+    return grangercausalitytests (
+        _df_granger[['Return', 'Fear_Greed_diff']],
+        maxlag = 20,
+        verbose=False
+    )
+results = run_granger(df_granger)
+
 
 # 결과 화면을 웹화면에 출력 하기
 st.markdown("---")
