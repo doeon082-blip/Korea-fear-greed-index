@@ -1325,3 +1325,16 @@ try:
     st.dataframe(df_wf)
 except:
     st.info("walk_forward.py 를 먼저 실행해 주세요")
+
+# 외부 테스트 결과 표시
+# walk_forward.py 에서 저장되는데 화면에 안 보이던 것
+st.markdown("---")
+st.write("외부 데스트 결과 (학습에서 전혀 안 쓴 데이터)")
+try:
+    df_final = pd.read_csv(f"{DATA_DIR}walk_forward_final_test.csv")
+    st.write(f"외부 테스트 정확도: {df_final['전체정확도'].iloc[0]:.1f}%")
+    st.write(f"테스트 기간 : {df_final['테스트시작'].iloc[0]} - {df_final['테스트종료'].iloc[0]}")
+    st.write(f"테스트 데이터: {df_final['테스트데이터수'].iloc[0]}일")
+    st.dataframe(df_final)
+except:
+    st.info("walk_forward.py 를 먼저 실행해주세요")
