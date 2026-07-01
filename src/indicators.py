@@ -36,7 +36,9 @@ def calculate_indicators(df, df_usd, df_bond, df_sp500, df_vix, df_gold,
     df['MA20'] = df['Close'].rolling(20).mean()
     df['MA20_gap'] = (df['Close'] - df['MA20']) / df['MA20'] * 100
     df['MA20_gap_norm'] = normalize_rolling(df['MA20_gap'])
-
+    df['MA60'] = df['Close'].rolling(40).mean()
+    df['MA120'] = df['Close'].rolling(120).mean()
+    df['MA240'] = df['Close'].rolling(240).mean()
     # 거래량
     df['Volume_change'] = df['Volume'].pct_change()
     df['Volume_norm'] = normalize_rolling(

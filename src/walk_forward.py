@@ -64,11 +64,11 @@ df, indicator_cols = calculate_indicators(
 )
 
 # Dynamic labeling
-df = make_labels(df)
+df = make_labels(df,horizon=20)
 
 # 전체 데이터 준비
 X_all = df[indicator_cols].dropna()
-y_all = df['label'].reindex(X_all.index).dropna()
+y_all = df['label_20d'].reindex(X_all.index).dropna()
 X_all = X_all.reindex(y_all.index)
 total = len(X_all)
 

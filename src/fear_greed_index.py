@@ -100,6 +100,14 @@ df_vkospi = pd.read_csv(
     index_col =0,   # 첫 번째 열을 인덱스로
     parse_dates= True  # 날짜 형식으로 변환 True가 문자열에서 날짜형식으로변한 False는 문자열 그대로 오류남
 )
+# indicators.py 의 calculate_indicators 로
+# 19개 지표 한 번에 계산
+# 두 파일 중복 제거 완료
+df, indicator_cols_calc = calculate_indicators(
+    df, df_usd, df_bond , df_sp500, df_vix, df_gold,
+    df_foreign, df_institution, df_fundamental,
+    df_foreign_limit, df_retail, df_vkospi
+)
 fig,  (ax1, ax2) = plt.subplots(2, 1, figsize=(12,8))
 ax1.plot(df.index, df['Close'], label='KOSPI')
 ax1.plot(df.index, df['MA20'], label ='20일 이동평균')
@@ -112,14 +120,6 @@ ax2.bar(df.index, df['Volume'], label='거래량')
 ax2.set_title('거래량')
 ax2.legend()
 plt.tight_layout()
-# indicators.py 의 calculate_indicators 로
-# 19개 지표 한 번에 계산
-# 두 파일 중복 제거 완료
-df, indicator_cols_calc = calculate_indicators(
-    df, df_usd, df_bond , df_sp500, df_vix, df_gold,
-    df_foreign, df_institution, df_fundamental,
-    df_foreign_limit, df_retail, df_vkospi
-)
 df['Fear_Greed'] = df[indicator_cols_calc].mean(axis=1)
 today_score = df['Fear_Greed'].iloc[-1]
 st.write(f"\n오늘 공포탐욕지수: {today_score:.1f}")
