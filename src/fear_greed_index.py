@@ -28,26 +28,37 @@ logging.info("앱 실행")
 if platform.system() == 'Darwin':
     plt.rcParams['font.family'] = 'AppleGothic'
 plt.rcParams['axes.unicode_minus'] = False
-df = fdr.DataReader('KS11', START_DATE)
-# 원달러 환율 데이터 불러오기
-# USD/KRW: 달러 대비 원화 환율
-df_usd = fdr.DataReader('USD/KRW', START_DATE)
-# 환율 정규화
-# 환율 오르면 외국인 투자 감소 → 공포 신호
-# 그래서 역방향으로 정규화
-df_bond = fdr.DataReader('^TNX', START_DATE)
-# S&P500 데이터 수집
-# 미국 시장이 한국보다 하루 먼저 움직임
-# 선행 지표로 활용
-df_sp500 = fdr.DataReader('^GSPC', START_DATE)
-# VIX 데이터 수집
-# 미국 공포지수
-# 글로벌 불안감 측정
-df_vix = fdr.DataReader('^VIX',START_DATE)
-# 금 가격
-# 안전자산 선호 지표
-# 불안할수록 금 가격 오름
-df_gold= fdr.DataReader('GC=F',START_DATE)
+@st.cache_data(ttl=CACHE_TTL)
+def load_market_data():
+    """
+    외부 API 데이터 로드 +캐싱
+    매번 새로 긁어오면 느리고 API 차단 위협
+    CACHE_TTL(1시간) 동안 결과 재사용
+    """
+    
+    df = fdr.DataReader('KS11', START_DATE)
+    # 원달러 환율 데이터 불러오기
+    # USD/KRW: 달러 대비 원화 환율
+    df_usd = fdr.DataReader('USD/KRW', START_DATE)
+    # 환율 정규화
+    # 환율 오르면 외국인 투자 감소 → 공포 신호
+    # 그래서 역방향으로 정규화
+    df_bond = fdr.DataReader('^TNX', START_DATE)
+    # S&P500 데이터 수집
+    # 미국 시장이 한국보다 하루 먼저 움직임
+    # 선행 지표로 활용
+    df_sp500 = fdr.DataReader('^GSPC', START_DATE)
+    # VIX 데이터 수집
+    # 미국 공포지수
+    # 글로벌 불안감 측정
+    df_vix = fdr.DataReader('^VIX',START_DATE)
+    # 금 가격
+    # 안전자산 선호 지표
+    # 불안할수록 금 가격 오름
+    df_gold= fdr.DataReader('GC=F',START_DATE)
+    return df, df_usd, df_bond, df_sp500, df_vix, df_gold 
+
+df, df_usd, df_bond, df_sp500, df_vix, df_gold = load_market_data()
 # 외국인 순매수 CSV 읽기
 df_foreign = pd.read_csv(
     f"{DATA_DIR}foreign_data.csv" ,
