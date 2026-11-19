@@ -465,7 +465,7 @@ for lag in range(1, 21):
         # p-vauleark 0.05 이상이면 우연일수가 있음
         result_text = "유의미하지 않음"
 
-    st.write(f"{lag}일 후: p-value = {p_value:.4f} -> {result_text}")
+    st.write(f"최근{lag}일치 사용 p-value = {p_value:.4f} -> {result_text}")
 
 # 뉴스 감성분석
 #하는 이유
@@ -1251,6 +1251,14 @@ st.write("중요도 낮은 지표 (1일 기준):")
 for idx, val in shap_today_1d.tail(5).items():
     st.write(f"{idx}: {dynamic_weights_1d[idx]:.1f}%")
     
+    
+foreign = df_foreign[-1,0] # 외국인 마지막 값(원)
+def flow_text(value:float)-> str :
+    """순매수 금액(원)을 '4,062억 순매도' 같은 문장으로 바꾼다.""" 
+    if value > 0:
+        return f"{value / 1e8:,.0f} 억 매수"
+    else:
+        return f"{-value / 1e8:,.0f} 억 매수"
 # llm시장 분석 코멘트 생성
 # ollama의 qwen2.5:14b 모델 사용
 
@@ -1274,9 +1282,9 @@ prompt = f"""
 -VIX: {df['VIX_norm'].iloc[-1]:.1f}
 -GOLD: {df['GOLD_norm'].iloc[-1]:.1f}
 -VKOSPI: {df['VKOSPI_norm'].iloc[-1]:.1f}
--개인투자자 순매수: {df['RETAIL_norm'].iloc[-1]:.1f}
--외국인 순매수: {df['FOREIGN_norm'].iloc[-1]:.1f}
--기관 순매수: {df['INSTITUTION_norm'].iloc[-1]:.1f}
+-개인투자자 순매수: {flow_text(df['RETAIL'].iloc[-1])}
+-외국인 순매수: {flow_text(df['FOREIGN'].iloc[-1])}
+-기관 순매수: {flow_text(df['INSTITUTION'].iloc[-1])}
 -PER: {df['PER_norm'].iloc[-1]:.1f}
 -PBR: {df['PBR_norm'].iloc[-1]:.1f}
 -배당수익률: {df['DIV_norm'].iloc[-1]:.1f}
