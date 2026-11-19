@@ -449,7 +449,7 @@ results = run_granger(df_granger)
 # 결과 화면을 웹화면에 출력 하기
 st.markdown("---")
 st.subheader("📊 Granger 인과검정 결과")
-st.write("공포탐욕지수가 KOSPI 수익률을 예측 할수 있는지 검증")
+st.write("공포탐욕지수가 KOSPI 수익률을 예측에 추가정보를 줄수있는가를 검증")
 
 #lag별 p-value 출력
 # lag: 며칠후에 영향을 주는지
