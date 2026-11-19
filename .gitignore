@@ -5,3 +5,4 @@ __pycache__/
 *.pyc
 logs/
 data/*.csv
+data_backup_*/
