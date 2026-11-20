@@ -150,6 +150,8 @@ def make_labels(df, horizon=1):
     volatility = df['Return'].rolling(WINDOW).std() * np.sqrt(horizon)
     dynamic_threshold = volatility * 0.5
     
+    valid = (cumulative_return.notna()) & (dynamic_threshold.notna())
+    
     conditions = [
         cumulative_return > dynamic_threshold, #누적 상숭
         cumulative_return < -dynamic_threshold #누적 하락
@@ -160,5 +162,7 @@ def make_labels(df, horizon=1):
     # 예: horizon=1  → label_1d
     # 예: horizon=5  → label_5d
     # 예: horizon=20 → label_20d
-    df[f'label_{horizon}d'] = np.select(conditions, [2, 0], default=1)
+    labels = np.select(conditions, [2,0], default = 1)
+    df[f'label_{horizon}d'] = pd.Series(labels, index=df.index).where(valid)
     return df
+    
