@@ -1,6 +1,6 @@
 # indicators.py
 # 역할:
-# → 19개 지표 계산 함수 모음
+# → 18개 지표 계산 함수 모음
 # → fear_greed_index.py, walk_forward.py 둘 다 여기서 가져다 씀
 # → 지표 추가/수정할 때 이 파일만 수정하면 됨
 
@@ -29,7 +29,7 @@ def calculate_indicators(df, df_usd, df_bond, df_sp500, df_vix, df_gold,
                           df_foreign, df_institution, df_fundamental,
                           df_foreign_limit, df_retail, df_vkospi):
     """
-    19개 지표 전부 계산해서 df에 추가
+    18개 지표 전부 계산해서 df에 추가
     반환: 지표 추가된 df, 지표 컬럼 목록
     """
     # 이동평균 괴리율
@@ -101,8 +101,6 @@ def calculate_indicators(df, df_usd, df_bond, df_sp500, df_vix, df_gold,
     df['RETAIL'] = df_retail['개인'].reindex(df.index)
     df['RETAIL_norm'] = normalize_rolling(df['RETAIL'])
 
-    df['VKOSPI'] = df_vkospi['종가'].reindex(df.index)
-    df['VKOSPI_norm'] = 100 - normalize_rolling(df['VKOSPI'])
 
     df['FOREIGN'] = df_foreign['외국인'].reindex(df.index)
     df['FOREIGN_norm'] = normalize_rolling(df['FOREIGN'])
@@ -117,7 +115,7 @@ def calculate_indicators(df, df_usd, df_bond, df_sp500, df_vix, df_gold,
     indicator_cols = [
         'MA20_gap_norm', 'Volume_norm', 'Volatility_norm', 'Momentum_norm',
         'HL_norm', 'RSI_norm', 'USD_norm', 'BOND_norm', 'SP500_norm',
-        'VIX_norm', 'GOLD_norm', 'VKOSPI_norm', 'RETAIL_norm', 'FOREIGN_norm',
+        'VIX_norm', 'GOLD_norm',  'RETAIL_norm', 'FOREIGN_norm',
         'INSTITUTION_norm', 'PER_norm', 'PBR_norm', 'DIV_norm', 'FOREIGN_LIMIT_norm'
     ]
 

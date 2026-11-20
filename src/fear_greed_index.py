@@ -139,7 +139,7 @@ st.pyplot(fig)
 # 13개 지표가 서로 얼마나 관련있는지 확인
 
 
-# 19개 지표 컬럼만 모아서 새 데이터프레임 만들기
+# 18개 지표 컬럼만 모아서 새 데이터프레임 만들기
 indicator_cols  =[
     'MA20_gap_norm', # 이동 평균 괴리율
     'Volume_norm', # 거래량
@@ -152,12 +152,11 @@ indicator_cols  =[
     'SP500_norm', #S&P500
     'VIX_norm', #VIX 지수
     'GOLD_norm', # GOLD 안전자산
-    'VKOSPI_norm', # VKOSPI 지표 (한국판 VIX)
     'RETAIL_norm', # 개인 투자자 순매수
     'FOREIGN_norm', # 외국인 순매수
     'INSTITUTION_norm', # 기관 투자자 순매수
-    'PBR_norm' , # KOSPI 전체 PBR
-    'PER_norm' , # KOSPI 전체 PSR
+    'PER_norm', # KOSPI 전체 PER
+    'PBR_norm' , # KOSPI 전체 PSR
     'DIV_norm' , # 배당수익률
     'FOREIGN_LIMIT_norm' # 외국인 한도 소진율
 ]
@@ -196,7 +195,6 @@ labels = [
     'SP500',
     'VIX',
     '금',
-    'VKOSPI',
     '개인순매수',
     '외국인순매수',
     '기관순매수',
@@ -1252,13 +1250,13 @@ for idx, val in shap_today_1d.tail(5).items():
     st.write(f"{idx}: {dynamic_weights_1d[idx]:.1f}%")
     
     
-foreign = df_foreign[-1,0] # 외국인 마지막 값(원)
+foreign = df_foreign.iloc[-1,0] # 외국인 마지막 값(원)
 def flow_text(value:float)-> str :
     """순매수 금액(원)을 '4,062억 순매도' 같은 문장으로 바꾼다.""" 
     if value > 0:
         return f"{value / 1e8:,.0f} 억 매수"
     else:
-        return f"{-value / 1e8:,.0f} 억 매수"
+        return f"{-value / 1e8:,.0f} 억 매도"
 # llm시장 분석 코멘트 생성
 # ollama의 qwen2.5:14b 모델 사용
 
@@ -1269,7 +1267,7 @@ prompt = f"""
 모든것을 논리적으로 분석하며 항상 진실만을 말한는 전문가 입니다
 오늘 한국 공포탐욕지수는 {today_score:.1f}점입니다.
 
-19개 지표 현황:
+18개 지표 현황:
 -이동평균 괴리율: {df['MA20_gap_norm'].iloc[-1]:.1f}
 -거래량: {df['Volume_norm'].iloc[-1]:.1f}
 -변동성: {df['Volatility_norm'].iloc[-1]:.1f}
@@ -1281,10 +1279,9 @@ prompt = f"""
 -SP500: {df['SP500_norm'].iloc[-1]:.1f}
 -VIX: {df['VIX_norm'].iloc[-1]:.1f}
 -GOLD: {df['GOLD_norm'].iloc[-1]:.1f}
--VKOSPI: {df['VKOSPI_norm'].iloc[-1]:.1f}
--개인투자자 순매수: {flow_text(df['RETAIL'].iloc[-1])}
--외국인 순매수: {flow_text(df['FOREIGN'].iloc[-1])}
--기관 순매수: {flow_text(df['INSTITUTION'].iloc[-1])}
+-개인투자자 : {flow_text(df['RETAIL'].iloc[-1])}
+-외국인 : {flow_text(df['FOREIGN'].iloc[-1])}
+-기관 : {flow_text(df['INSTITUTION'].iloc[-1])}
 -PER: {df['PER_norm'].iloc[-1]:.1f}
 -PBR: {df['PBR_norm'].iloc[-1]:.1f}
 -배당수익률: {df['DIV_norm'].iloc[-1]:.1f}
