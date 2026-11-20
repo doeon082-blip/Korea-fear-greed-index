@@ -1250,7 +1250,6 @@ for idx, val in shap_today_1d.tail(5).items():
     st.write(f"{idx}: {dynamic_weights_1d[idx]:.1f}%")
     
     
-foreign = df_foreign.iloc[-1,0] # 외국인 마지막 값(원)
 def flow_text(value:float)-> str :
     """순매수 금액(원)을 '4,062억 순매도' 같은 문장으로 바꾼다.""" 
     if value > 0:
