@@ -21,7 +21,7 @@ import logging
 from xgboost import XGBClassifier
 from lightgbm import LGBMClassifier
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score, classification_report
+from sklearn.metrics import accuracy_score, classification_report ,confusion_matrix, f1_score
 import FinanceDataReader as fdr
 from dotenv import load_dotenv
 from config import DATA_DIR, LOG_DIR, START_DATE, WINDOW
@@ -67,8 +67,12 @@ df, indicator_cols = calculate_indicators(
 df = make_labels(df,horizon=20)
 
 # 전체 데이터 준비
+# 라벨(y)를 float에서 int로 바꾼다
+# make_labels가 NaN을 넣으려고 float로 만든 라벨이 0.0, 1.0, 2.0이 됐다. 
+# XGBoost는 정수 클래스를 기대한다. NaN은 이미 dropna로 지운 뒤라 변환할 수 있다.
 X_all = df[indicator_cols].dropna()
 y_all = df['label_20d'].reindex(X_all.index).dropna()
+y_all = y_all.astype(int) 
 X_all = X_all.reindex(y_all.index)
 total = len(X_all)
 
@@ -88,6 +92,14 @@ print(f"\n전체 데이터: {total}일")
 print(f"학습구간: {X_all.index[0].strftime('%Y-%m-%d')} ~ {X_all.index[train_end].strftime('%Y-%m-%d')}")
 print(f"검증구간: {X_all.index[train_end].strftime('%Y-%m-%d')} ~ {X_all.index[val_end].strftime('%Y-%m-%d')}")
 print(f"외부테스트: {X_all.index[val_end].strftime('%Y-%m-%d')} ~ {X_all.index[-1].strftime('%Y-%m-%d')}")
+splits = {
+    "학습": y_all.iloc[:train_end],
+    "검증": y_all.iloc[train_end:val_end],
+    "외부": y_all.iloc[val_end:],
+    }
+for name,y in splits.items():
+    ratio = y.value_counts(normalize = True).sort_index().round(3)
+    print(f"[{name}]개수{len(y)} | 분포 {ratio.to_dict()} | baseline {ratio.max():.3f}")
 
 # =============================================
 # Walk-forward (학습+검증 구간에서만)
@@ -234,6 +246,12 @@ for i in range(len(X_final_test)):
     pred_final.append(max(set(votes), key=votes.count))
 
 final_acc = accuracy_score(y_final_test, pred_final)
+# (무엇) 예측 분포·혼동행렬·macro-F1·baseline 출력
+# (왜) 정확도만으로는 한 클래스만 찍는 모델과 구별되지 않는다
+print("예측 분포:", pd.Series(pred_final).value_counts(normalize = True).sort_index().round(3))
+cm = confusion_matrix(y_final_test, pred_final , labels = [0,1,2])
+print(pd.DataFrame(cm, index = ["실제0","실제1","실제2"], columns = ["예측0","예측1","예측2"]))
+print("macro-F1:", f1_score(y_final_test, pred_final, average = "macro", zero_division = 0))
 final_report = classification_report(
     y_final_test, pred_final,
     labels=[0, 1, 2],
