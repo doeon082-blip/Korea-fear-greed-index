@@ -1237,9 +1237,11 @@ st.markdown('---')
 st.write("오늘 AI 분석 결과")
 st.write(f"기존지수 (동일 가중치): {today_score:.1f}점")
 # 3가지 horizon 예측 결과 표시
-st.write(f"1일 후 예측 지수: {today_dynamic_1d:.1f}점")
-st.write(f"5일 후 예측 지수: {today_dynamic_5d:.1f}점")
-st.write(f"20일 후 예측 지수: {today_dynamic_20d:.1f}점")
+st.write(f"AI 가중지수(1일차): {today_dynamic_1d:.1f}점")
+st.write(f"AI 가중지수(5일차): {today_dynamic_5d:.1f}점")
+st.write(f"AI 가중지수(20일차): {today_dynamic_20d:.1f}점")
+st.caption("각 기간의 방향을 학습할 때 중요했던 지표에 더 큰 가중치를 준, "
+           "오늘 시점의 점수. 미래 지수 값을 예측한 것이 아님")
 
 # 1일 기준 중요 지표 top 5
 st.write("오늘 가장 중요한 지표 top 5 (1일 기준):")
