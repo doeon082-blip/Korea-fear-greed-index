@@ -104,7 +104,8 @@ for name,y in splits.items():
 # =============================================
 # Walk-forward (학습+검증 구간에서만)
 # =============================================
-TEST_SIZE = 63  # 검증: 63일 (약 3개월)
+TEST_SIZE = 63 # 검증: 63일 (약 3개월)
+EMBARGO = 20 # 라벨이 20일 뒤까지 보기 때문에, 학습과 테스트 사이를 20행 띄운다
 start = WINDOW  # 처음 252일은 학습용
 
 results = []
@@ -113,8 +114,8 @@ print(f"\nWalk-forward 시작: 총 {(val_end - WINDOW) // TEST_SIZE}구간")
 while start + TEST_SIZE <= val_end:
     # 누적 학습 (처음부터 현재까지)
     # → 데이터 많아질수록 더 정확해짐
-    X_train = X_all.iloc[0:start]
-    y_train = y_all.iloc[0:start]
+    X_train = X_all.iloc[0:start-EMBARGO ]
+    y_train = y_all.iloc[0:start-EMBARGO ]
 
     # 검증 구간 (학습 다음 63일)
     X_test = X_all.iloc[start:start + TEST_SIZE]
@@ -208,8 +209,8 @@ print(f"최저 정확도: {df_results['전체정확도'].min():.1f}%")
 print(f"\n=== 외부 테스트 시작 ===")
 
 # 전체 학습+검증 데이터로 최종 모델 학습
-X_final_train = X_all.iloc[0:val_end]
-y_final_train = y_all.iloc[0:val_end]
+X_final_train = X_all.iloc[0:val_end-EMBARGO ]
+y_final_train = y_all.iloc[0:val_end-EMBARGO ]
 
 # 외부 테스트 데이터
 X_final_test = X_all.iloc[val_end:]
