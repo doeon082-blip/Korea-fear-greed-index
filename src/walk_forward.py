@@ -109,6 +109,7 @@ EMBARGO = 20 # 라벨이 20일 뒤까지 보기 때문에, 학습과 테스트 �
 start = WINDOW  # 처음 252일은 학습용
 
 results = []
+pred_rows = []
 print(f"\nWalk-forward 시작: 총 {(val_end - WINDOW) // TEST_SIZE}구간")
 
 while start + TEST_SIZE <= val_end:
@@ -152,6 +153,8 @@ while start + TEST_SIZE <= val_end:
     for i in range(len(X_test)):
         votes = [pred_xgb[i], pred_lgb[i], pred_rf[i]]
         pred_ensemble.append(max(set(votes), key=votes.count))
+        
+    pred_rows.append(pd.DataFrame({"date": y_test.index,"y_true": y_test.values, "y_pred":pred_ensemble, "fold_start": X_test.index[0] }))
 
     # 전체 정확도
     acc = accuracy_score(y_test, pred_ensemble)
