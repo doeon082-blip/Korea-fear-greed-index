@@ -943,8 +943,11 @@ df = make_labels(df, horizon =20)
 # 전체 데이터 준비
 X_all=df[indicator_cols_calc].dropna()
 y_all_1d=df['label_1d'].reindex(X_all.index).dropna()
+y_all_1d = y_all_1d.astype(int)
 y_all_5d = df['label_5d'].reindex(X_all.index).dropna()
+y_all_5d = y_all_5d.astype(int)
 y_all_20d = df['label_20d'].reindex(X_all.index).dropna()
+y_all_20d = y_all_20d.astype(int)
 X_all_1d=X_all.reindex(y_all_1d.index).iloc[-WINDOW:]
 X_all_5d = X_all.reindex(y_all_5d.index).iloc[-WINDOW:]
 X_all_20d = X_all.reindex(y_all_20d.index).iloc[-WINDOW:]
