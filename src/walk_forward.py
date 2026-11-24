@@ -200,6 +200,11 @@ while start + TEST_SIZE <= val_end:
 df_results = pd.DataFrame(results)
 df_results.to_csv(f"{DATA_DIR}walk_forward_results.csv", index=False)
 
+#  폴드별 날짜·정답·예측 표를 하나로 합쳐 CSV로 저장한다
+#  모델을 다시 돌리지 않고도 부트스트랩과 지표 재계산을 할 수 있게 하려고
+df_preds = pd.concat(pred_rows, ignore_index = True)
+df_preds.to_csv(f"{DATA_DIR}walk_forward_predictions.csv", index = False)
+
 print(f"\n=== Walk-forward 결과 ===")
 print(f"평균 정확도: {df_results['전체정확도'].mean():.1f}%")
 print(f"최고 정확도: {df_results['전체정확도'].max():.1f}%")
@@ -250,8 +255,19 @@ for i in range(len(X_final_test)):
     pred_final.append(max(set(votes), key=votes.count))
 
 final_acc = accuracy_score(y_final_test, pred_final)
-# (무엇) 예측 분포·혼동행렬·macro-F1·baseline 출력
-# (왜) 정확도만으로는 한 클래스만 찍는 모델과 구별되지 않는다
+
+#  외부 테스트의 날짜별 정답·예측을 CSV로 저장한다
+# 폴드 표와 같은 형식으로 남겨서 부트스트랩과 재계산에 쓰려고
+df_ext = pd.DataFrame({
+    "date": y_final_test.index,
+    "y_true": y_final_test.values,
+    "y_pred": pred_final,
+    "fold_start": X_final_test.index[0],
+})
+df_ext.to_csv(f"{DATA_DIR}external_predictions.csv", index=False)
+
+#  예측 분포·혼동행렬·macro-F1·baseline 출력
+#  정확도만으로는 한 클래스만 찍는 모델과 구별되지 않는다
 print("예측 분포:", pd.Series(pred_final).value_counts(normalize = True).sort_index().round(3))
 cm = confusion_matrix(y_final_test, pred_final , labels = [0,1,2])
 print(pd.DataFrame(cm, index = ["실제0","실제1","실제2"], columns = ["예측0","예측1","예측2"]))
