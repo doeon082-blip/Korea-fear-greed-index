@@ -228,6 +228,35 @@ for i in range(len(indicator_cols)):
         if abs(corr_matrix.iloc[i, j]) >=0.7:
             st.write(f"➡️ {indicator_cols[i]} & {indicator_cols[j]}; {corr_matrix.iloc[i, j]:.2f}")
 
+indicator_info = [("MA괴리율", "MA20_gap_norm", "종가와 20일 이동평균의 괴리율", "높을수록 탐욕"),
+    ("거래량", "Volume_norm", "거래량의 일간 변화율", "높을수록 탐욕 (방향은 가정)"),
+    ("변동성", "Volatility_norm", "20일 수익률 표준편차 (반전)", "변동성 낮을수록 탐욕"),
+    ("모멘텀", "Momentum_norm", "20일 수익률", "높을수록 탐욕"),
+    ("고저비율", "HL_norm", "52주 고저 범위 안에서의 위치", "높을수록 탐욕"),
+    ("RSI", "RSI_norm", "14일 RSI (단순이동평균 방식)", "높을수록 탐욕"),
+    ("환율", "USD_norm", "원/달러 환율 (반전)", "환율 낮을수록 탐욕"),
+    ("국채금리", "BOND_norm", "미국채 10년 금리 (반전)", "금리 낮을수록 탐욕"),
+    ("SP500", "SP500_norm", "S&P500 일간 수익률 (1일 shift)", "높을수록 탐욕"),
+    ("VIX", "VIX_norm", "VIX 변동성 지수 (반전)", "VIX 낮을수록 탐욕"),
+    ("금", "GOLD_norm", "금 가격 (반전, 안전자산 선호)", "금 낮을수록 탐욕"),
+    ("개인순매수", "RETAIL_norm", "개인 투자자 순매수", "높을수록 탐욕"),
+    ("외국인순매수", "FOREIGN_norm", "외국인 순매수", "높을수록 탐욕"),
+    ("기관순매수", "INSTITUTION_norm", "기관 순매수", "높을수록 탐욕"),
+    ("PER", "PER_norm", "주가수익비율", "높을수록 탐욕"),
+    ("PBR", "PBR_norm", "주가순자산비율", "높을수록 탐욕"),
+    ("배당수익률", "DIV_norm", "배당수익률 (반전 없음)", "코드상 높을수록 탐욕 (방향 검토 중)"),
+    ("한도소진율", "FOREIGN_LIMIT_norm", "외국인 보유 한도 소진률", "높을수록 탐욕"),
+]
+with st.expander("지표 18개 설명"):
+    st.caption("모든 지표는 최근 252일 기준 0~100으로 정규화 한 값이고, 방향은 코드의 계산 방식 기준")
+    st.dataframe(
+        pd.DataFrame(
+            indicator_info,
+            columns = ["히트맵 라벨", "컬럼명", "무엇을 재나", "코드 기준 방향"],
+        ),
+        hide_index =True
+    )
+
 # ADF 검정 (Augmented Dickey-Fuller Test)
 # Granger 검정 전에 반드시 해야 하는 것
 # 데이터가 안정적인지 (정상 시계열인지) 확인
